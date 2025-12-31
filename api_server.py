@@ -746,13 +746,16 @@ if __name__ == "__main__":
     load_users()
     load_promo_codes()
     
-    logger.info(f"Запуск API сервера на порту 8000")
+    # Получаем порт из переменной окружения или используем 8000
+    port = int(os.environ.get("PORT", 8000))
+    
+    logger.info(f"Запуск API сервера на порту {port}")
     logger.info(f"Токен бота: {TOKEN[:10]}...")
     logger.info(f"Директория данных: {DATA_DIR}")
     
     uvicorn.run(
         app, 
         host="0.0.0.0", 
-        port=8000,
+        port=port,
         log_level="info"
     )
