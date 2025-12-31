@@ -5,99 +5,469 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CS2 Skin Bot</title>
     <meta name="telegram-web-app-bot-domain" content="web.telegram.org">
+    
+    <!-- Telegram Web App SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js?1"></script>
+    
+    <!-- Font Awesome для иконок -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Стили -->
     <link rel="stylesheet" href="style.css">
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    
+    <!-- Manifest -->
     <link rel="manifest" href="manifest.json">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="https://img.icons8.com/color/96/000000/csgo.png">
 </head>
 <body>
-    <div class="container">
+    <div class="app-container">
         <!-- Header -->
-        <header class="header">
+        <header class="app-header">
             <div class="user-info">
-                <div class="avatar" id="user-avatar">👤</div>
-                <div>
-                    <div class="user-name" id="user-name">Загрузка...</div>
-                    <div class="user-balance" id="user-balance">0 баллов</div>
+                <div class="user-avatar" id="user-avatar">
+                    <i class="fas fa-user"></i>
+                </div>
+                <div class="user-details">
+                    <h3 id="user-name">Загрузка...</h3>
+                    <div class="user-balance">
+                        <i class="fas fa-coins"></i>
+                        <span id="balance">0</span> баллов
+                    </div>
                 </div>
             </div>
-            <button class="menu-btn" onclick="toggleMenu()">☰</button>
+            <button class="menu-btn" onclick="toggleMenu()">
+                <i class="fas fa-bars"></i>
+            </button>
         </header>
 
         <!-- Main Content -->
         <main class="main-content">
-            <!-- Balance Card -->
-            <div class="balance-card">
-                <h2>💰 Ваш баланс</h2>
-                <div class="balance-amount" id="balance">0</div>
-                <button class="btn-primary" onclick="claimBonus()">🎁 Получить бонус</button>
+            <!-- Daily Bonus Card -->
+            <div class="bonus-card">
+                <div class="bonus-content">
+                    <div class="bonus-icon">
+                        <i class="fas fa-gift"></i>
+                    </div>
+                    <div class="bonus-info">
+                        <h4>Ежедневный бонус</h4>
+                        <p>Получи 50 баллов каждый день</p>
+                    </div>
+                    <button class="bonus-btn" id="daily-bonus-btn" onclick="claimDailyBonus()">
+                        <i class="fas fa-gift"></i> Забрать
+                    </button>
+                </div>
+                <div class="bonus-timer" id="bonus-timer">
+                    Доступно через: <span id="timer">24:00:00</span>
+                </div>
             </div>
 
             <!-- Quick Actions -->
-            <div class="actions-grid">
-                <div class="action-card" onclick="openSection('cases')">
-                    <div class="icon">🎮</div>
-                    <span>Кейсы</span>
-                </div>
-                <div class="action-card" onclick="openSection('inventory')">
-                    <div class="icon">📦</div>
-                    <span>Инвентарь</span>
-                </div>
-                <div class="action-card" onclick="openSection('earn')">
-                    <div class="icon">💰</div>
-                    <span>Заработать</span>
-                </div>
-                <div class="action-card" onclick="openSection('promo')">
-                    <div class="icon">🎁</div>
-                    <span>Промокоды</span>
+            <div class="quick-actions">
+                <h3 class="section-title">
+                    <i class="fas fa-bolt"></i> Быстрые действия
+                </h3>
+                <div class="actions-grid">
+                    <button class="action-btn primary" onclick="openSection('cases')">
+                        <div class="action-icon">
+                            <i class="fas fa-box-open"></i>
+                        </div>
+                        <span>Кейсы</span>
+                    </button>
+                    
+                    <button class="action-btn success" onclick="openSection('inventory')">
+                        <div class="action-icon">
+                            <i class="fas fa-archive"></i>
+                        </div>
+                        <span>Инвентарь</span>
+                    </button>
+                    
+                    <button class="action-btn warning" onclick="openSection('earn')">
+                        <div class="action-icon">
+                            <i class="fas fa-money-bill-wave"></i>
+                        </div>
+                        <span>Заработать</span>
+                    </button>
+                    
+                    <button class="action-btn info" onclick="openSection('promo')">
+                        <div class="action-icon">
+                            <i class="fas fa-ticket-alt"></i>
+                        </div>
+                        <span>Промокод</span>
+                    </button>
                 </div>
             </div>
 
             <!-- Cases Section -->
-            <section id="cases-section" class="section hidden">
-                <h2>🎮 Выберите кейс</h2>
-                <div class="cases-grid">
-                    <div class="case-item" onclick="openCase(500)">
-                        <h3>Базовый</h3>
-                        <p>500 баллов</p>
+            <section id="cases-section" class="page-section hidden">
+                <div class="section-header">
+                    <button class="back-btn" onclick="backToMain()">
+                        <i class="fas fa-arrow-left"></i>
+                    </button>
+                    <h2><i class="fas fa-box-open"></i> Кейсы</h2>
+                </div>
+                
+                <div class="cases-container">
+                    <div class="case-card" data-price="500" onclick="openCase(500)">
+                        <div class="case-header basic">
+                            <i class="fas fa-box"></i>
+                            <span class="case-badge">Базовый</span>
+                        </div>
+                        <div class="case-body">
+                            <h4>Базовый кейс</h4>
+                            <p>Простая добыча</p>
+                            <ul class="case-items">
+                                <li>Наклейка | ENCE</li>
+                                <li>Наклейка | Grayhound</li>
+                                <li>Наклейка | PGL</li>
+                            </ul>
+                        </div>
+                        <div class="case-footer">
+                            <span class="case-price">
+                                <i class="fas fa-coins"></i> 500
+                            </span>
+                            <button class="open-case-btn">Открыть</button>
+                        </div>
                     </div>
-                    <div class="case-item" onclick="openCase(3000)">
-                        <h3>Продвинутый</h3>
-                        <p>3000 баллов</p>
+                    
+                    <div class="case-card" data-price="3000" onclick="openCase(3000)">
+                        <div class="case-header advanced">
+                            <i class="fas fa-box-open"></i>
+                            <span class="case-badge">Продвинутый</span>
+                        </div>
+                        <div class="case-body">
+                            <h4>Продвинутый кейс</h4>
+                            <p>Лучшие награды</p>
+                            <ul class="case-items">
+                                <li>Наклейка | huNter</li>
+                                <li>FAMAS | Колония</li>
+                                <li>UMP-45 | Внедорожник</li>
+                            </ul>
+                        </div>
+                        <div class="case-footer">
+                            <span class="case-price">
+                                <i class="fas fa-coins"></i> 3000
+                            </span>
+                            <button class="open-case-btn">Открыть</button>
+                        </div>
                     </div>
-                    <div class="case-item" onclick="openCase(5000)">
-                        <h3>Премиум</h3>
-                        <p>5000 баллов</p>
+                    
+                    <div class="case-card" data-price="5000" onclick="openCase(5000)">
+                        <div class="case-header premium">
+                            <i class="fas fa-gem"></i>
+                            <span class="case-badge">Премиум</span>
+                        </div>
+                        <div class="case-body">
+                            <h4>Премиум кейс</h4>
+                            <p>Элитные предметы</p>
+                            <ul class="case-items">
+                                <li>Five-SeveN | Хладагент</li>
+                                <li>Капсула с наклейками</li>
+                                <li>Наклейка | XD</li>
+                            </ul>
+                        </div>
+                        <div class="case-footer">
+                            <span class="case-price">
+                                <i class="fas fa-coins"></i> 5000
+                            </span>
+                            <button class="open-case-btn">Открыть</button>
+                        </div>
+                    </div>
+                    
+                    <div class="case-card" data-price="10000" onclick="openCase(10000)">
+                        <div class="case-header elite">
+                            <i class="fas fa-crown"></i>
+                            <span class="case-badge">Элитный</span>
+                        </div>
+                        <div class="case-body">
+                            <h4>Элитный кейс</h4>
+                            <p>Редкие скины</p>
+                            <ul class="case-items">
+                                <li>Наклейка | Клоунский парик</li>
+                                <li>Наклейка | Высокий полёт</li>
+                                <li>Sticker | From The Deep</li>
+                            </ul>
+                        </div>
+                        <div class="case-footer">
+                            <span class="case-price">
+                                <i class="fas fa-coins"></i> 10000
+                            </span>
+                            <button class="open-case-btn">Открыть</button>
+                        </div>
+                    </div>
+                    
+                    <div class="case-card" data-price="15000" onclick="openCase(15000)">
+                        <div class="case-header legendary">
+                            <i class="fas fa-fire"></i>
+                            <span class="case-badge">Легендарный</span>
+                        </div>
+                        <div class="case-body">
+                            <h4>Легендарный кейс</h4>
+                            <p>Уникальные предметы</p>
+                            <ul class="case-items">
+                                <li>Наклейка | Гипноглаза</li>
+                                <li>Наклейка | Радужный путь</li>
+                                <li>Брелок | Щепотка соли</li>
+                            </ul>
+                        </div>
+                        <div class="case-footer">
+                            <span class="case-price">
+                                <i class="fas fa-coins"></i> 15000
+                            </span>
+                            <button class="open-case-btn">Открыть</button>
+                        </div>
                     </div>
                 </div>
-                <button class="btn-back" onclick="backToMain()">← Назад</button>
             </section>
 
             <!-- Inventory Section -->
-            <section id="inventory-section" class="section hidden">
-                <h2>📦 Ваш инвентарь</h2>
-                <div class="inventory-list" id="inventory-list">
-                    <p class="empty">Инвентарь пуст</p>
+            <section id="inventory-section" class="page-section hidden">
+                <div class="section-header">
+                    <button class="back-btn" onclick="backToMain()">
+                        <i class="fas fa-arrow-left"></i>
+                    </button>
+                    <h2><i class="fas fa-archive"></i> Инвентарь</h2>
                 </div>
-                <button class="btn-back" onclick="backToMain()">← Назад</button>
+                
+                <div class="inventory-stats">
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-boxes"></i>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="total-items">0</span>
+                            <span class="stat-label">Всего предметов</span>
+                        </div>
+                    </div>
+                    
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-coins"></i>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="total-value">0</span>
+                            <span class="stat-label">Общая стоимость</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="inventory-container">
+                    <div class="inventory-filters">
+                        <button class="filter-btn active" onclick="filterInventory('all')">Все</button>
+                        <button class="filter-btn" onclick="filterInventory('sticker')">Наклейки</button>
+                        <button class="filter-btn" onclick="filterInventory('weapon')">Оружие</button>
+                        <button class="filter-btn" onclick="filterInventory('other')">Прочее</button>
+                    </div>
+                    
+                    <div class="inventory-list" id="inventory-list">
+                        <!-- Items will be loaded here -->
+                    </div>
+                    
+                    <div class="inventory-actions">
+                        <button class="withdraw-all-btn" onclick="withdrawAllItems()">
+                            <i class="fas fa-download"></i> Вывести все
+                        </button>
+                    </div>
+                </div>
             </section>
+
+            <!-- Earn Section -->
+            <section id="earn-section" class="page-section hidden">
+                <div class="section-header">
+                    <button class="back-btn" onclick="backToMain()">
+                        <i class="fas fa-arrow-left"></i>
+                    </button>
+                    <h2><i class="fas fa-money-bill-wave"></i> Заработать</h2>
+                </div>
+                
+                <div class="earn-methods">
+                    <div class="earn-card">
+                        <div class="earn-icon">
+                            <i class="fas fa-user-friends"></i>
+                        </div>
+                        <div class="earn-info">
+                            <h4>Пригласи друга</h4>
+                            <p>Получи 500 баллов за каждого</p>
+                            <div class="earn-reward">
+                                <i class="fas fa-coins"></i> +500 баллов
+                            </div>
+                        </div>
+                        <button class="earn-btn" onclick="copyReferralLink()">
+                            <i class="fas fa-copy"></i> Копировать ссылку
+                        </button>
+                    </div>
+                    
+                    <div class="earn-card">
+                        <div class="earn-icon">
+                            <i class="fab fa-telegram"></i>
+                        </div>
+                        <div class="earn-info">
+                            <h4>Telegram сотрудничество</h4>
+                            <p>Добавь бота в профиль</p>
+                            <div class="earn-reward">
+                                <i class="fas fa-coins"></i> +500 баллов/7 дней
+                            </div>
+                        </div>
+                        <button class="earn-btn" onclick="openSection('telegram-collab')">
+                            <i class="fas fa-rocket"></i> Начать
+                        </button>
+                    </div>
+                    
+                    <div class="earn-card">
+                        <div class="earn-icon">
+                            <i class="fab fa-steam"></i>
+                        </div>
+                        <div class="earn-info">
+                            <h4>Steam сотрудничество</h4>
+                            <p>Добавь ссылку в Steam профиль</p>
+                            <div class="earn-reward">
+                                <i class="fas fa-coins"></i> +500 баллов/7 дней
+                            </div>
+                        </div>
+                        <button class="earn-btn" onclick="openSection('steam-collab')">
+                            <i class="fas fa-rocket"></i> Начать
+                        </button>
+                    </div>
+                    
+                    <div class="earn-card">
+                        <div class="earn-icon">
+                            <i class="fas fa-tasks"></i>
+                        </div>
+                        <div class="earn-info">
+                            <h4>Ежедневные задания</h4>
+                            <p>Выполняй задания каждый день</p>
+                            <div class="earn-reward">
+                                <i class="fas fa-coins"></i> +100 баллов/день
+                            </div>
+                        </div>
+                        <button class="earn-btn" onclick="showDailyTasks()">
+                            <i class="fas fa-tasks"></i> Показать задания
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Promo Code Section -->
+            <section id="promo-section" class="page-section hidden">
+                <div class="section-header">
+                    <button class="back-btn" onclick="backToMain()">
+                        <i class="fas fa-arrow-left"></i>
+                    </button>
+                    <h2><i class="fas fa-ticket-alt"></i> Промокод</h2>
+                </div>
+                
+                <div class="promo-container">
+                    <div class="promo-input-group">
+                        <input type="text" 
+                               id="promo-code-input" 
+                               placeholder="Введите промокод"
+                               maxlength="20">
+                        <button class="promo-submit-btn" onclick="activatePromoCode()">
+                            <i class="fas fa-check"></i> Активировать
+                        </button>
+                    </div>
+                    
+                    <div class="active-promos">
+                        <h4>Активные промокоды:</h4>
+                        <div class="promo-list">
+                            <div class="promo-item">
+                                <span class="promo-code">MINI1</span>
+                                <span class="promo-reward">+50 баллов</span>
+                            </div>
+                            <div class="promo-item">
+                                <span class="promo-code">1JKLM</span>
+                                <span class="promo-reward">+100 баллов</span>
+                            </div>
+                            <div class="promo-item">
+                                <span class="promo-code">RWTUBE</span>
+                                <span class="promo-reward">+250 баллов</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Case Opening Animation (hidden) -->
+            <div id="case-opening" class="case-opening hidden">
+                <div class="case-opening-content">
+                    <div class="spinning-wheel">
+                        <i class="fas fa-sync fa-spin"></i>
+                    </div>
+                    <h3 id="opening-text">Открываем кейс...</h3>
+                    <div class="won-item" id="won-item">
+                        <!-- Won item will appear here -->
+                    </div>
+                    <button class="close-opening-btn" onclick="closeCaseOpening()">
+                        <i class="fas fa-times"></i> Закрыть
+                    </button>
+                </div>
+            </div>
         </main>
 
         <!-- Side Menu -->
         <div class="side-menu" id="side-menu">
-            <div class="menu-header">
-                <h3>Меню</h3>
-                <button class="close-btn" onclick="toggleMenu()">×</button>
-            </div>
-            <div class="menu-items">
-                <div onclick="openSection('profile')">👤 Профиль</div>
-                <div onclick="openSection('withdraw')">💸 Вывод</div>
-                <div onclick="openSection('help')">❓ Помощь</div>
-                <div onclick="sendToBot('open_bot')">💬 Открыть бота</div>
-                <div onclick="closeApp()">❌ Закрыть</div>
+            <div class="menu-overlay" onclick="toggleMenu()"></div>
+            <div class="menu-content">
+                <div class="menu-header">
+                    <div class="menu-user">
+                        <div class="menu-avatar" id="menu-avatar">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        <div class="menu-user-info">
+                            <h4 id="menu-username">Пользователь</h4>
+                            <p id="menu-balance">0 баллов</p>
+                        </div>
+                    </div>
+                    <button class="menu-close-btn" onclick="toggleMenu()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                
+                <div class="menu-items">
+                    <a class="menu-item" onclick="openSection('profile')">
+                        <i class="fas fa-user-circle"></i>
+                        <span>Профиль</span>
+                    </a>
+                    
+                    <a class="menu-item" onclick="openSection('withdraw')">
+                        <i class="fas fa-download"></i>
+                        <span>Вывод средств</span>
+                    </a>
+                    
+                    <a class="menu-item" onclick="openSection('history')">
+                        <i class="fas fa-history"></i>
+                        <span>История операций</span>
+                    </a>
+                    
+                    <a class="menu-item" onclick="openSection('settings')">
+                        <i class="fas fa-cog"></i>
+                        <span>Настройки</span>
+                    </a>
+                    
+                    <a class="menu-item" onclick="openSection('help')">
+                        <i class="fas fa-question-circle"></i>
+                        <span>Помощь</span>
+                    </a>
+                    
+                    <a class="menu-item" onclick="sendToBot('open_bot')">
+                        <i class="fab fa-telegram"></i>
+                        <span>Открыть бота</span>
+                    </a>
+                    
+                    <a class="menu-item logout" onclick="closeApp()">
+                        <i class="fas fa-sign-out-alt"></i>
+                        <span>Закрыть приложение</span>
+                    </a>
+                </div>
             </div>
         </div>
+
+        <!-- Toast Notifications -->
+        <div id="toast-container" class="toast-container"></div>
     </div>
 
+    <!-- JavaScript -->
     <script src="script.js"></script>
 </body>
 </html>
