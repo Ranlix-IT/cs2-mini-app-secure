@@ -188,14 +188,36 @@ function setupEventListeners() {
         dailyBonusBtn.addEventListener('click', claimDailyBonus);
     }
     
-    // Кнопки назад в секциях
-    document.querySelectorAll('.back-btn').forEach(btn => {
+    // Кнопки назад в секциях (только в секциях, не в анимации!)
+    document.querySelectorAll('.page-section .back-btn').forEach(btn => {
         btn.addEventListener('click', function(e) {
             e.preventDefault();
             e.stopPropagation();
             backToMain();
         });
     });
+    
+    // Кнопка закрытия анимации открытия кейса
+    const closeCaseBtn = document.getElementById('close-case-btn');
+    if (closeCaseBtn) {
+        closeCaseBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            closeCaseOpening();
+        });
+    }
+    
+    // Также закрытие по клику на overlay (фон) анимации
+    const caseOpening = document.getElementById('case-opening');
+    if (caseOpening) {
+        caseOpening.addEventListener('click', function(e) {
+            if (e.target === this) { // Клик на самом overlay, а не на содержимом
+                e.preventDefault();
+                e.stopPropagation();
+                closeCaseOpening();
+            }
+        });
+    }
     
     // Активация промокода
     const promoBtn = document.getElementById('activate-promo-btn');
@@ -232,26 +254,6 @@ function setupEventListeners() {
             }
         });
     });
-    
-    // Кнопка закрытия анимации открытия кейса
-    const closeOpeningBtn = document.getElementById('close-opening-btn');
-    if (closeOpeningBtn) {
-        closeOpeningBtn.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            closeCaseOpening();
-        });
-    }
-    
-    // Также закрытие по клику на overlay (фон)
-    const caseOpening = document.getElementById('case-opening');
-    if (caseOpening) {
-        caseOpening.addEventListener('click', function(e) {
-            if (e.target === this) { // Клик на самом overlay, а не на содержимом
-                closeCaseOpening();
-            }
-        });
-    }
     
     // Кнопка выхода
     const logoutBtn = document.getElementById('logout-btn');
@@ -354,6 +356,9 @@ function openSection(sectionName) {
 
 function backToMain() {
     console.log("🔙 Возврат на главную");
+    
+    // Сначала закрываем анимацию открытия кейса если она открыта
+    closeCaseOpening();
     
     // Показываем основной контент
     const mainElements = document.querySelectorAll('.main-content > *:not(.page-section)');
