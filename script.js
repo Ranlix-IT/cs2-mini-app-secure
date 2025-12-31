@@ -2,7 +2,7 @@
 const tg = window.Telegram.WebApp;
 
 // Конфигурация API
-const API_BASE_URL = "https://cs2-mini-app-api.onrender.com"; // Замените на ваш API URL
+const API_BASE_URL = "https://cs2-mini-app-api.onrender.com"; // Ваш API URL
 
 // Состояние приложения
 let appState = {
@@ -28,9 +28,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // Загружаем данные пользователя
     loadUserData();
     
-    // Загружаем доступные промокоды
-    loadAvailablePromos();
-    
     // Настраиваем обработчики событий
     setupEventListeners();
     
@@ -47,6 +44,8 @@ function initializeTelegramApp() {
     // Получаем данные пользователя из Telegram
     const initData = tg.initDataUnsafe;
     
+    console.log('Telegram init data:', initData);
+    
     if (initData.user) {
         appState.user = {
             id: initData.user.id,
@@ -59,20 +58,6 @@ function initializeTelegramApp() {
         
         updateUserInfo();
     }
-    
-    // Настройка основной кнопки
-    tg.MainButton.setParams({
-        text: 'Открыть бота',
-        color: '#667eea',
-        text_color: '#ffffff'
-    });
-    
-    // Обработчики событий Telegram
-    tg.onEvent('themeChanged', setupTheme);
-    tg.onEvent('viewportChanged', () => tg.expand());
-    tg.onEvent('mainButtonClicked', () => {
-        tg.sendData(JSON.stringify({ action: 'open_bot' }));
-    });
 }
 
 // Настройка темы
@@ -92,7 +77,7 @@ async function apiRequest(endpoint, method = 'GET', data = null) {
     try {
         const headers = {
             'Content-Type': 'application/json',
-            'X-Telegram-Init-Data': tg.initData || ''
+            'Authorization': `tma ${tg.initData || ''}`
         };
         
         const config = {
@@ -103,6 +88,8 @@ async function apiRequest(endpoint, method = 'GET', data = null) {
         if (data && (method === 'POST' || method === 'PUT')) {
             config.body = JSON.stringify(data);
         }
+        
+        console.log(`API Request: ${method} ${API_BASE_URL}${endpoint}`);
         
         const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
         
@@ -143,6 +130,9 @@ async function loadUserData() {
             
             updateUserInfo();
             updateUI();
+            updateProfileInfo();
+            
+            showToast('Добро пожаловать!', `Ваш баланс: ${appState.balance} баллов`, 'success');
         }
         
         hideLoading();
@@ -153,14 +143,14 @@ async function loadUserData() {
         // Fallback к тестовым данным если API недоступен
         useTestData();
         
-        showToast('API недоступен', 'Используем демо-режим', 'warning');
+        showToast('Демо-режим', 'API временно недоступен', 'warning');
     }
 }
 
 // Использование тестовых данных
 function useTestData() {
     appState.user = {
-        id: 123456789,
+        id: 1003215844,
         firstName: "Демо",
         lastName: "Пользователь",
         username: "demo_user"
@@ -191,61 +181,14 @@ function useTestData() {
         }
     ];
     appState.dailyBonusAvailable = true;
-    appState.referralCode = "ref_123456789";
+    appState.referralCode = "ref_1003215844";
     appState.tradeLink = "";
-    appState.referralsCount = 0;
+    appState.referralsCount = 2;
     
     updateUserInfo();
     updateUI();
+    updateProfileInfo();
 }
-
-// Загрузка доступных промокодов
-async function loadAvailablePromos() {
-    try {
-        const response = await apiRequest('/api/available-promos');
-        
-        if (response.success && response.promos) {
-            // Обновляем список промокодов в UI
-            const promoList = document.querySelector('.promo-list');
-            if (promoList) {
-                promoList.innerHTML = response.promos.map(promo => `
-                    <div class="promo-item">
-                        <span class="promo-code">${promo.code}</span>
-                        <span class="promo-reward">+${promo.points} баллов</span>
-                        <span class="promo-uses">${promo.remaining_uses === "∞" ? "∞" : `осталось: ${promo.remaining_uses}`}</span>
-                    </div>
-                `).join('');
-            }
-        }
-        
-    } catch (error) {
-        console.error('Error loading promos:', error);
-        
-        // Fallback тестовые промокоды
-        const promoList = document.querySelector('.promo-list');
-        if (promoList) {
-            promoList.innerHTML = `
-                <div class="promo-item">
-                    <span class="promo-code">MINI1</span>
-                    <span class="promo-reward">+50 баллов</span>
-                    <span class="promo-uses">∞</span>
-                </div>
-                <div class="promo-item">
-                    <span class="promo-code">1JKLM</span>
-                    <span class="promo-reward">+100 баллов</span>
-                    <span class="promo-uses">осталось: 51</span>
-                </div>
-                <div class="promo-item">
-                    <span class="promo-code">RWTUBE</span>
-                    <span class="promo-reward">+250 баллов</span>
-                    <span class="promo-uses">осталось: 10</span>
-                </div>
-            `;
-        }
-    }
-}
-
-// ===== ОСНОВНЫЕ ФУНКЦИИ =====
 
 // Обновление информации о пользователе
 function updateUserInfo() {
@@ -272,6 +215,30 @@ function updateUserInfo() {
     }
 }
 
+// Обновление информации профиля
+function updateProfileInfo() {
+    if (!appState.user) return;
+    
+    const profileName = document.getElementById('profile-name');
+    const profileAvatar = document.getElementById('profile-avatar');
+    const profileId = document.getElementById('profile-id');
+    const profileRefCode = document.getElementById('profile-ref-code');
+    const profileRefCount = document.getElementById('profile-ref-count');
+    
+    if (profileName) {
+        const displayName = appState.user.firstName + (appState.user.lastName ? ' ' + appState.user.lastName : '');
+        profileName.textContent = displayName;
+    }
+    
+    if (profileId) profileId.textContent = appState.user.id;
+    if (profileRefCode) profileRefCode.textContent = appState.referralCode;
+    if (profileRefCount) profileRefCount.textContent = appState.referralsCount;
+    
+    if (appState.user.photoUrl && profileAvatar) {
+        profileAvatar.innerHTML = `<img src="${appState.user.photoUrl}" alt="Avatar" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
+    }
+}
+
 // Обновление всего UI
 function updateUI() {
     updateBalance();
@@ -284,14 +251,9 @@ function updateUI() {
 // Обновление баланса
 function updateBalance() {
     const balanceElement = document.getElementById('balance');
-    const userBalanceElement = document.getElementById('user-balance');
     
     if (balanceElement) {
         balanceElement.textContent = appState.balance.toLocaleString();
-    }
-    
-    if (userBalanceElement) {
-        userBalanceElement.textContent = `${appState.balance.toLocaleString()} баллов`;
     }
 }
 
@@ -313,7 +275,7 @@ function updateStats() {
     }
     
     if (totalValue) {
-        const total = appState.inventory.reduce((sum, item) => sum + item.price, 0);
+        const total = appState.inventory.reduce((sum, item) => sum + (item.price || 0), 0);
         totalValue.textContent = total.toLocaleString();
     }
 }
@@ -347,15 +309,15 @@ function updateInventory(filter = 'all') {
     }
     
     // Создаем список предметов
-    inventoryList.innerHTML = filteredItems.map(item => `
-        <div class="inventory-item" data-id="${item.id}">
+    inventoryList.innerHTML = filteredItems.map((item, index) => `
+        <div class="inventory-item" data-id="${item.id || index}">
             <div class="item-info">
                 <div class="item-name">${item.name}</div>
                 <div class="item-price">
-                    <i class="fas fa-coins"></i> ${item.price.toLocaleString()} баллов
+                    <i class="fas fa-coins"></i> ${(item.price || 0).toLocaleString()} баллов
                 </div>
             </div>
-            <button class="withdraw-btn" onclick="withdrawItem(${item.id})" title="Вывести предмет">
+            <button class="withdraw-btn" onclick="withdrawItem('${item.id || index}')" title="Вывести предмет">
                 <i class="fas fa-download"></i> Вывести
             </button>
         </div>
@@ -395,13 +357,23 @@ function updateBonusButton() {
 // Обновление таймера бонуса
 function updateBonusTimer() {
     const timerElement = document.getElementById('timer');
-    if (!timerElement || !appState.lastBonusTime) return;
+    const bonusTimer = document.getElementById('bonus-timer');
+    
+    if (!timerElement || !bonusTimer) return;
+    
+    if (appState.dailyBonusAvailable) {
+        timerElement.textContent = 'Доступно сейчас!';
+        bonusTimer.style.display = 'none';
+        return;
+    }
+    
+    bonusTimer.style.display = 'block';
     
     const now = Date.now();
-    const timeSinceLastBonus = now - appState.lastBonusTime;
-    const hoursSinceLastBonus = Math.floor(timeSinceLastBonus / (1000 * 60 * 60));
+    const lastBonus = appState.lastBonusTime || (now - 86400000);
+    const timeSinceLastBonus = now - lastBonus;
     
-    if (hoursSinceLastBonus >= 24) {
+    if (timeSinceLastBonus >= 86400000) {
         appState.dailyBonusAvailable = true;
         updateBonusButton();
         timerElement.textContent = 'Доступно сейчас!';
@@ -409,7 +381,7 @@ function updateBonusTimer() {
     }
     
     // Вычисляем оставшееся время
-    const remainingTime = 24 * 60 * 60 * 1000 - timeSinceLastBonus;
+    const remainingTime = 86400000 - timeSinceLastBonus;
     const hours = Math.floor(remainingTime / (1000 * 60 * 60));
     const minutes = Math.floor((remainingTime % (1000 * 60 * 60)) / (1000 * 60));
     const seconds = Math.floor((remainingTime % (1000 * 60)) / 1000);
@@ -437,19 +409,17 @@ function openSection(section) {
     // Закрываем меню
     toggleMenu(false);
     
-    // Показываем/скрываем основную кнопку
-    if (section === 'main') {
-        tg.MainButton.hide();
-    } else {
-        tg.MainButton.setText('На главную');
-        tg.MainButton.onClick(() => backToMain());
-        tg.MainButton.show();
+    // Загружаем промокоды если открываем промо секцию
+    if (section === 'promo') {
+        loadAvailablePromos();
     }
 }
 
 // Назад в главное меню
 function backToMain() {
-    openSection('main');
+    document.querySelectorAll('.page-section').forEach(el => {
+        el.classList.add('hidden');
+    });
 }
 
 // Открытие кейса
@@ -484,13 +454,6 @@ async function openCase(price) {
             
             // Обновляем UI
             updateUI();
-            
-            // Отправляем данные в бота
-            sendToBot('case_opened', {
-                case_price: price,
-                won_item: response.item,
-                new_balance: appState.balance
-            });
             
             showToast('Кейс открыт!', `Вы получили: ${response.item}`, 'success');
         } else {
@@ -537,7 +500,7 @@ function openCaseLocal(price, caseOpening, openingText, wonItem) {
         // Обновляем состояние
         appState.balance -= price;
         appState.inventory.push({
-            id: Date.now(),
+            id: Date.now().toString(),
             name: wonItemName,
             price: itemPrice,
             type: wonItemName.includes('Наклейка') ? 'sticker' : 
@@ -554,13 +517,6 @@ function openCaseLocal(price, caseOpening, openingText, wonItem) {
         
         // Обновляем UI
         updateUI();
-        
-        // Отправляем данные в бота
-        sendToBot('case_opened', {
-            case_price: price,
-            won_item: wonItemName,
-            new_balance: appState.balance
-        });
         
         showToast('Кейс открыт!', `Вы получили: ${wonItemName}`, 'success');
     }, 2000);
@@ -598,12 +554,6 @@ async function claimDailyBonus() {
                 setTimeout(() => updateBonusButton(), 2000);
             }
             
-            // Отправляем данные в бота
-            sendToBot('bonus_claimed', {
-                amount: response.bonus,
-                new_balance: appState.balance
-            });
-            
             showToast('Бонус получен!', `+${response.bonus} баллов`, 'success');
         } else {
             showToast('Бонус уже получен', 'Возвращайтесь завтра!', 'warning');
@@ -636,18 +586,12 @@ function claimDailyBonusLocal() {
         setTimeout(() => updateBonusButton(), 2000);
     }
     
-    // Отправляем данные в бота
-    sendToBot('bonus_claimed', {
-        amount: bonusAmount,
-        new_balance: appState.balance
-    });
-    
     showToast('Бонус получен!', `+${bonusAmount} баллов`, 'success');
 }
 
 // Вывод предмета
 async function withdrawItem(itemId) {
-    const item = appState.inventory.find(i => i.id === itemId);
+    const item = appState.inventory.find(i => i.id == itemId);
     if (!item) {
         showToast('Предмет не найден', '', 'error');
         return;
@@ -671,17 +615,10 @@ async function withdrawItem(itemId) {
             }
             
             // Обновляем инвентарь
-            appState.inventory = appState.inventory.filter(item => item.id !== itemId);
+            appState.inventory = appState.inventory.filter(item => item.id != itemId);
             
             // Обновляем UI
             updateUI();
-            
-            // Отправляем данные в бота
-            sendToBot('item_withdrawn', {
-                item_name: item.name,
-                item_price: item.price,
-                items_remaining: appState.inventory.length
-            });
             
             showToast('Запрос отправлен', 'Администратор обработает ваш вывод', 'success');
         } else {
@@ -708,17 +645,10 @@ function withdrawItemLocal(itemId, item) {
     }
     
     // Удаляем предмет из инвентаря
-    appState.inventory = appState.inventory.filter(i => i.id !== itemId);
+    appState.inventory = appState.inventory.filter(i => i.id != itemId);
     
     // Обновляем UI
     updateUI();
-    
-    // Отправляем данные в бота
-    sendToBot('item_withdrawn', {
-        item_name: item.name,
-        item_price: item.price,
-        items_remaining: appState.inventory.length
-    });
     
     showToast('Запрос отправлен', 'Администратор обработает ваш вывод', 'success');
 }
@@ -730,7 +660,7 @@ async function withdrawAllItems() {
         return;
     }
     
-    const totalValue = appState.inventory.reduce((sum, item) => sum + item.price, 0);
+    const totalValue = appState.inventory.reduce((sum, item) => sum + (item.price || 0), 0);
     
     if (!confirm(`Вывести все предметы (${appState.inventory.length} шт.) на сумму ${totalValue} баллов?`)) {
         return;
@@ -739,11 +669,10 @@ async function withdrawAllItems() {
     try {
         showLoading();
         
-        // Отправляем запрос на вывод всех предметов
-        // Note: Для этого нужно добавить endpoint в API
-        
         // Временно используем последовательный вывод
-        for (const item of appState.inventory) {
+        const itemsToWithdraw = [...appState.inventory];
+        
+        for (const item of itemsToWithdraw) {
             try {
                 await apiRequest('/api/withdraw-item', 'POST', { item_id: item.id });
             } catch (error) {
@@ -757,13 +686,7 @@ async function withdrawAllItems() {
         // Обновляем UI
         updateUI();
         
-        // Отправляем данные в бота
-        sendToBot('all_items_withdrawn', {
-            items_count: appState.inventory.length,
-            total_value: totalValue
-        });
-        
-        showToast('Запросы отправлены', `Вывод ${appState.inventory.length} предметов`, 'success');
+        showToast('Запросы отправлены', `Вывод ${itemsToWithdraw.length} предметов`, 'success');
         
     } catch (error) {
         console.error('Error withdrawing all items:', error);
@@ -784,13 +707,6 @@ function withdrawAllItemsLocal(totalValue) {
         return;
     }
     
-    // Отправляем данные в бота
-    sendToBot('all_items_withdrawn', {
-        items_count: appState.inventory.length,
-        total_value: totalValue,
-        items: appState.inventory.map(item => item.name)
-    });
-    
     // Очищаем инвентарь
     appState.inventory = [];
     
@@ -798,6 +714,52 @@ function withdrawAllItemsLocal(totalValue) {
     updateUI();
     
     showToast('Запрос отправлен', `Вывод всех предметов`, 'success');
+}
+
+// Загрузка доступных промокодов
+async function loadAvailablePromos() {
+    try {
+        const response = await apiRequest('/api/available-promos');
+        
+        if (response.success && response.promos) {
+            // Обновляем список промокодов в UI
+            const promoList = document.getElementById('promo-list');
+            if (promoList) {
+                promoList.innerHTML = response.promos.map(promo => `
+                    <div class="promo-item">
+                        <span class="promo-code">${promo.code}</span>
+                        <span class="promo-reward">+${promo.points} баллов</span>
+                        <span class="promo-uses">${promo.remaining_uses === "∞" ? "∞" : `осталось: ${promo.remaining_uses}`}</span>
+                    </div>
+                `).join('');
+            }
+        }
+        
+    } catch (error) {
+        console.error('Error loading promos:', error);
+        
+        // Fallback тестовые промокоды
+        const promoList = document.getElementById('promo-list');
+        if (promoList) {
+            promoList.innerHTML = `
+                <div class="promo-item">
+                    <span class="promo-code">WELCOME1</span>
+                    <span class="promo-reward">+100 баллов</span>
+                    <span class="promo-uses">∞</span>
+                </div>
+                <div class="promo-item">
+                    <span class="promo-code">CS2FUN</span>
+                    <span class="promo-reward">+250 баллов</span>
+                    <span class="promo-uses">осталось: 100</span>
+                </div>
+                <div class="promo-item">
+                    <span class="promo-code">RANWORK</span>
+                    <span class="promo-reward">+500 баллов</span>
+                    <span class="promo-uses">осталось: 50</span>
+                </div>
+            `;
+        }
+    }
 }
 
 // Активация промокода
@@ -832,12 +794,8 @@ async function activatePromoCode() {
             // Очищаем поле ввода
             input.value = '';
             
-            // Отправляем данные в бота
-            sendToBot('promo_activated', {
-                promo_code: code,
-                points_received: response.points,
-                new_balance: appState.balance
-            });
+            // Перезагружаем список промокодов
+            loadAvailablePromos();
             
             showToast('Промокод активирован!', `+${response.points} баллов`, 'success');
         } else {
@@ -858,11 +816,9 @@ async function activatePromoCode() {
 function activatePromoCodeLocal(code, input) {
     // Проверка тестовых промокодов
     const testPromos = {
-        'MINI1': 50,
-        '1JKLM': 100,
-        'RWTUBE': 250,
-        'INSTRW': 250,
-        'VKRAN': 250
+        'WELCOME1': 100,
+        'CS2FUN': 250,
+        'RANWORK': 500
     };
     
     if (!testPromos[code]) {
@@ -881,13 +837,6 @@ function activatePromoCodeLocal(code, input) {
     // Очищаем поле ввода
     input.value = '';
     
-    // Отправляем данные в бота
-    sendToBot('promo_activated', {
-        promo_code: code,
-        points_received: points,
-        new_balance: appState.balance
-    });
-    
     showToast('Промокод активирован!', `+${points} баллов`, 'success');
 }
 
@@ -901,7 +850,7 @@ async function setTradeLink() {
         return;
     }
     
-    // Простая валидация
+    // Простая валидация ссылки
     if (!tradeLink.includes('steamcommunity.com/tradeoffer/new/')) {
         showToast('Неверный формат', 'Это не похоже на трейд ссылку Steam', 'error');
         return;
@@ -949,7 +898,7 @@ function copyReferralLink() {
         return;
     }
     
-    const botUsername = 'MeteoHinfoBot'; // Замените на username вашего бота
+    const botUsername = 'MeteoHinfoBot'; // Username вашего бота
     const referralLink = `https://t.me/${botUsername}?start=${appState.referralCode}`;
     
     // Используем Clipboard API
@@ -957,7 +906,6 @@ function copyReferralLink() {
         navigator.clipboard.writeText(referralLink)
             .then(() => {
                 showToast('Ссылка скопирована', 'Отправьте ее друзьям', 'success');
-                sendToBot('referral_link_copied');
             })
             .catch(err => {
                 fallbackCopy(referralLink);
@@ -977,12 +925,29 @@ function fallbackCopy(text) {
     try {
         document.execCommand('copy');
         showToast('Ссылка скопирована', 'Отправьте ее друзьям', 'success');
-        sendToBot('referral_link_copied');
     } catch (err) {
         showToast('Ошибка копирования', 'Скопируйте ссылку вручную', 'error');
     }
     
     document.body.removeChild(textArea);
+}
+
+// Telegram сотрудничество
+function openTelegramCollab() {
+    showToast('Telegram сотрудничество', 'Инструкция отправлена в бота', 'info');
+    tg.openTelegramLink('https://t.me/MeteoHinfoBot');
+}
+
+// Steam сотрудничество
+function openSteamCollab() {
+    showToast('Steam сотрудничество', 'Инструкция отправлена в бота', 'info');
+    tg.openTelegramLink('https://t.me/MeteoHinfoBot');
+}
+
+// Показать ежедневные задания
+function showDailyTasks() {
+    showToast('Ежедневные задания', 'Доступны в основном боте', 'info');
+    tg.openTelegramLink('https://t.me/MeteoHinfoBot');
 }
 
 // ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
@@ -1007,16 +972,6 @@ function toggleMenu(show) {
 // Закрытие приложения
 function closeApp() {
     tg.close();
-}
-
-// Отправка данных в бота
-function sendToBot(action, data = {}) {
-    tg.sendData(JSON.stringify({
-        action: action,
-        user_id: appState.user?.id,
-        timestamp: Date.now(),
-        ...data
-    }));
 }
 
 // Показать уведомление
@@ -1126,3 +1081,6 @@ window.setTradeLink = setTradeLink;
 window.filterInventory = filterInventory;
 window.toggleMenu = toggleMenu;
 window.closeApp = closeApp;
+window.openTelegramCollab = openTelegramCollab;
+window.openSteamCollab = openSteamCollab;
+window.showDailyTasks = showDailyTasks;
