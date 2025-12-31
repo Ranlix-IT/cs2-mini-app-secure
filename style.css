@@ -406,6 +406,155 @@ body {
     transform: scale(1.05);
 }
 
+/* ===== PROFILE SECTION ===== */
+.profile-container {
+    background: var(--dark-card);
+    border-radius: var(--border-radius);
+    padding: 20px;
+}
+
+.profile-info {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 30px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.profile-avatar {
+    width: 80px;
+    height: 80px;
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 36px;
+    color: white;
+}
+
+.profile-details h3 {
+    font-size: 22px;
+    margin-bottom: 10px;
+}
+
+.profile-details p {
+    margin-bottom: 5px;
+    color: var(--text-gray);
+}
+
+.profile-details span {
+    color: white;
+    font-weight: 600;
+}
+
+.trade-link-section {
+    margin-bottom: 30px;
+    background: rgba(0, 0, 0, 0.2);
+    padding: 20px;
+    border-radius: var(--border-radius);
+}
+
+.trade-link-section h4 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 15px;
+    font-size: 18px;
+}
+
+.trade-link-input-group {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+#trade-link-input {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.1);
+    border: 2px solid var(--primary-color);
+    border-radius: var(--border-radius);
+    padding: 12px 15px;
+    color: white;
+    font-size: 14px;
+    outline: none;
+    transition: var(--transition);
+}
+
+#trade-link-input:focus {
+    border-color: var(--secondary-color);
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.3);
+}
+
+.trade-link-submit-btn {
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    padding: 12px 20px;
+    border-radius: var(--border-radius);
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+}
+
+.trade-link-submit-btn:hover {
+    background: var(--primary-dark);
+    transform: translateY(-2px);
+}
+
+.help-text {
+    font-size: 12px;
+    color: var(--text-gray);
+    margin-top: 10px;
+    line-height: 1.4;
+}
+
+.referral-section {
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.2) 0%, rgba(118, 75, 162, 0.2) 100%);
+    padding: 20px;
+    border-radius: var(--border-radius);
+    border: 1px solid rgba(102, 126, 234, 0.3);
+}
+
+.referral-section h4 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    font-size: 18px;
+}
+
+.referral-section p {
+    margin-bottom: 15px;
+    color: var(--text-gray);
+}
+
+.referral-btn {
+    width: 100%;
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+    color: white;
+    border: none;
+    padding: 15px;
+    border-radius: var(--border-radius);
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.referral-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+}
+
 /* ===== INVENTORY ===== */
 .inventory-stats {
     display: grid;
@@ -703,6 +852,11 @@ body {
     font-weight: 600;
 }
 
+.promo-uses {
+    font-size: 12px;
+    color: var(--text-gray);
+}
+
 /* ===== CASE OPENING ANIMATION ===== */
 .case-opening {
     position: fixed;
@@ -918,6 +1072,12 @@ body {
     text-align: center;
 }
 
+.menu-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 15px 0;
+}
+
 .menu-item.logout {
     color: var(--danger-color);
     margin-top: 20px;
@@ -1021,6 +1181,15 @@ body {
     .section-header h2 {
         font-size: 20px;
     }
+    
+    .profile-info {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .trade-link-input-group {
+        flex-direction: column;
+    }
 }
 
 /* ===== SCROLLBAR STYLING ===== */
@@ -1084,4 +1253,20 @@ body {
 .empty-state p {
     font-size: 14px;
     margin-bottom: 20px;
+}
+
+.btn-primary {
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: var(--border-radius);
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.btn-primary:hover {
+    background: var(--primary-dark);
+    transform: translateY(-2px);
 }
