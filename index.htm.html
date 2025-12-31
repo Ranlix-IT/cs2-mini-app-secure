@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CS2 Skin Bot App</title>
+    <meta name="telegram-web-app-bot-domain" content="ваш-домен.ком">
+
+    <!-- Telegram Web App JS SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js?1"></script>
+
+    <!-- Ваши стили -->
+    <link rel="stylesheet" href="style.css">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="icon.png">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="user-info">
+                <div class="avatar" id="user-avatar">👤</div>
+                <div class="user-details">
+                    <span id="user-name">Загрузка...</span>
+                    <div class="points" id="user-points">0 баллов</div>
+                </div>
+            </div>
+            <button class="menu-btn" onclick="toggleMenu()">☰</button>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Блок баланса -->
+            <section class="balance-card">
+                <h2>💰 Ваш баланс</h2>
+                <div class="balance-amount" id="balance">0</div>
+                <button class="btn-primary" onclick="claimDailyBonus()">🎁 Получить бонус</button>
+            </section>
+
+            <!-- Меню функций -->
+            <div class="function-grid">
+                <div class="function-card" onclick="openSection('cases')">
+                    <div class="icon">🎮</div>
+                    <span>Кейсы</span>
+                </div>
+                <div class="function-card" onclick="openSection('inventory')">
+                    <div class="icon">📦</div>
+                    <span>Инвентарь</span>
+                </div>
+                <div class="function-card" onclick="openSection('earn')">
+                    <div class="icon">💰</div>
+                    <span>Заработать</span>
+                </div>
+                <div class="function-card" onclick="openSection('promo')">
+                    <div class="icon">🎁</div>
+                    <span>Промокоды</span>
+                </div>
+                <div class="function-card" onclick="openSection('collab')">
+                    <div class="icon">🤝</div>
+                    <span>Сотрудничество</span>
+                </div>
+                <div class="function-card" onclick="openSection('withdraw')">
+                    <div class="icon">💸</div>
+                    <span>Вывод</span>
+                </div>
+            </div>
+
+            <!-- Секция кейсов -->
+            <section id="cases-section" class="section hidden">
+                <h2>🎮 Открыть кейс</h2>
+                <div class="cases-grid">
+                    <!-- Кейсы будут добавлены через JS -->
+                </div>
+                <button class="btn-secondary" onclick="openSection('main')">← Назад</button>
+            </section>
+
+            <!-- Секция инвентаря -->
+            <section id="inventory-section" class="section hidden">
+                <h2>📦 Ваш инвентарь</h2>
+                <div class="inventory-list">
+                    <!-- Предметы будут добавлены через JS -->
+                </div>
+                <button class="btn-secondary" onclick="openSection('main')">← Назад</button>
+            </section>
+
+            <!-- Секция заработка -->
+            <section id="earn-section" class="section hidden">
+                <h2>💰 Заработать баллы</h2>
+                <div class="earn-options">
+                    <div class="earn-card">
+                        <h3>👥 Пригласить друга</h3>
+                        <p>Получите 500 баллов за каждого</p>
+                        <button class="btn-small" onclick="copyReferralLink()">Копировать ссылку</button>
+                    </div>
+                    <div class="earn-card">
+                        <h3>🎁 Ежедневный бонус</h3>
+                        <p>50 баллов каждый день</p>
+                        <button class="btn-small" onclick="claimDailyBonus()">Забрать</button>
+                    </div>
+                </div>
+                <button class="btn-secondary" onclick="openSection('main')">← Назад</button>
+            </section>
+        </main>
+
+        <!-- Боковое меню -->
+        <div id="side-menu" class="side-menu">
+            <div class="menu-header">
+                <h3>Меню</h3>
+                <button class="close-btn" onclick="toggleMenu()">×</button>
+            </div>
+            <div class="menu-items">
+                <a onclick="openSection('profile')">👤 Профиль</a>
+                <a onclick="openSection('settings')">⚙️ Настройки</a>
+                <a onclick="openSection('help')">❓ Помощь</a>
+                <a onclick="sendDataToBot('open_main_menu')">💬 Открыть бота</a>
+                <a onclick="tg.close()">❌ Закрыть</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ваш JavaScript -->
+    <script src="script.js"></script>
+</body>
+</html>
