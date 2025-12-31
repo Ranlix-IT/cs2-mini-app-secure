@@ -157,13 +157,27 @@ function setupEventListeners() {
     });
     
     // Кнопки открытия кейсов
-    document.querySelectorAll('.case-card, .open-case-btn').forEach(btn => {
+    document.querySelectorAll('.open-case-btn').forEach(btn => {
         btn.addEventListener('click', function(e) {
             e.stopPropagation();
-            const caseCard = this.closest('.case-card') || this;
-            const price = caseCard.getAttribute('data-price');
+            e.preventDefault();
+            const caseCard = this.closest('.case-card');
+            const price = caseCard?.getAttribute('data-price');
             if (price) {
                 openCase(parseInt(price));
+            }
+        });
+    });
+    
+    // Клик на всей карточке кейса
+    document.querySelectorAll('.case-card').forEach(card => {
+        card.addEventListener('click', function(e) {
+            // Если клик не на кнопке "Открыть"
+            if (!e.target.closest('.open-case-btn')) {
+                const price = this.getAttribute('data-price');
+                if (price) {
+                    openCase(parseInt(price));
+                }
             }
         });
     });
@@ -174,9 +188,13 @@ function setupEventListeners() {
         dailyBonusBtn.addEventListener('click', claimDailyBonus);
     }
     
-    // Кнопки назад
+    // Кнопки назад в секциях
     document.querySelectorAll('.back-btn').forEach(btn => {
-        btn.addEventListener('click', backToMain);
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            backToMain();
+        });
     });
     
     // Активация промокода
@@ -205,7 +223,8 @@ function setupEventListeners() {
     
     // Навигация через меню
     document.querySelectorAll('.menu-item[data-section]').forEach(item => {
-        item.addEventListener('click', function() {
+        item.addEventListener('click', function(e) {
+            e.preventDefault();
             const section = this.getAttribute('data-section');
             if (section) {
                 openSection(section);
@@ -217,7 +236,21 @@ function setupEventListeners() {
     // Кнопка закрытия анимации открытия кейса
     const closeOpeningBtn = document.getElementById('close-opening-btn');
     if (closeOpeningBtn) {
-        closeOpeningBtn.addEventListener('click', closeCaseOpening);
+        closeOpeningBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            closeCaseOpening();
+        });
+    }
+    
+    // Также закрытие по клику на overlay (фон)
+    const caseOpening = document.getElementById('case-opening');
+    if (caseOpening) {
+        caseOpening.addEventListener('click', function(e) {
+            if (e.target === this) { // Клик на самом overlay, а не на содержимом
+                closeCaseOpening();
+            }
+        });
     }
     
     // Кнопка выхода
@@ -244,7 +277,8 @@ function setupEventListeners() {
     
     // Фильтры инвентаря
     document.querySelectorAll('.filter-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
             const filter = this.getAttribute('data-filter');
             if (filter) {
                 // Убираем активный класс со всех кнопок
@@ -284,18 +318,16 @@ function setupEventListeners() {
 function openSection(sectionName) {
     console.log(`📱 Открываем раздел: ${sectionName}`);
     
-    // Скрываем основной контент
-    const mainContent = document.querySelector('.main-content');
-    const mainSections = mainContent.children;
-    for (let element of mainSections) {
-        if (!element.classList.contains('page-section')) {
-            element.style.display = 'none';
-        }
-    }
+    // Скрываем основной контент (бонус, быстрые действия)
+    const mainElements = document.querySelectorAll('.main-content > *:not(.page-section)');
+    mainElements.forEach(element => {
+        element.style.display = 'none';
+    });
     
     // Скрываем все секции
     document.querySelectorAll('.page-section').forEach(section => {
         section.classList.add('hidden');
+        section.style.display = 'none';
     });
     
     // Показываем выбранную секцию
@@ -305,6 +337,7 @@ function openSection(sectionName) {
         targetSection.style.display = 'block';
         
         // Прокручиваем вверх
+        window.scrollTo(0, 0);
         targetSection.scrollTop = 0;
         
         // Загружаем данные если нужно
@@ -323,19 +356,19 @@ function backToMain() {
     console.log("🔙 Возврат на главную");
     
     // Показываем основной контент
-    const mainContent = document.querySelector('.main-content');
-    const mainSections = mainContent.children;
-    for (let element of mainSections) {
-        if (!element.classList.contains('page-section')) {
-            element.style.display = 'block';
-        }
-    }
+    const mainElements = document.querySelectorAll('.main-content > *:not(.page-section)');
+    mainElements.forEach(element => {
+        element.style.display = 'block';
+    });
     
     // Скрываем все секции
     document.querySelectorAll('.page-section').forEach(section => {
         section.classList.add('hidden');
         section.style.display = 'none';
     });
+    
+    // Прокручиваем вверх
+    window.scrollTo(0, 0);
 }
 
 function toggleMenu(show) {
@@ -344,15 +377,15 @@ function toggleMenu(show) {
         if (typeof show === 'boolean') {
             if (show) {
                 menu.classList.add('active');
+                document.body.style.overflow = 'hidden';
             } else {
                 menu.classList.remove('active');
+                document.body.style.overflow = '';
             }
         } else {
             menu.classList.toggle('active');
+            document.body.style.overflow = menu.classList.contains('active') ? 'hidden' : '';
         }
-        
-        // Блокируем прокрутку при открытом меню
-        document.body.style.overflow = menu.classList.contains('active') ? 'hidden' : '';
     }
 }
 
@@ -955,6 +988,7 @@ function showCaseOpening() {
     
     if (openingElement && openingText) {
         openingElement.classList.remove('hidden');
+        openingElement.style.display = 'flex';
         openingText.textContent = 'Открываем кейс...';
         
         // Скрываем список выигранных предметов
@@ -987,9 +1021,11 @@ function showWonItem(itemName, itemPrice) {
 }
 
 function closeCaseOpening() {
+    console.log("❌ Закрытие анимации открытия кейса");
     const openingElement = document.getElementById('case-opening');
     if (openingElement) {
         openingElement.classList.add('hidden');
+        openingElement.style.display = 'none';
     }
 }
 
