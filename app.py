@@ -1,30 +1,52 @@
-# api_server.py
+# app.py - CS2 Bot API Server
 from fastapi import FastAPI, HTTPException, Depends, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
 import json
 import logging
 import asyncio
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import hashlib
 import hmac
 import time
 import os
 from pathlib import Path
+from pydantic import BaseModel
 
 # Настройка логирования
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="CS2 Bot API", version="1.0.0")
+app = FastAPI(
+    title="CS2 Bot API",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
 
-# Настройка CORS
+# Настройка CORS для Telegram Mini Apps
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Разрешаем все origins
+    allow_origins=[
+        "https://web.telegram.org",
+        "https://tg-web.telegram.org",
+        "https://telegram.org",
+        "https://*.telegram.org",
+        "https://*.t.me",
+        "http://localhost:*",
+        "http://127.0.0.1:*",
+        "https://cs2-mini-app.onrender.com",
+        "https://cs2-mini-app-secure.onrender.com",
+        "*"  # Для тестирования
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=600,
 )
 
 # Конфигурация бота
@@ -40,13 +62,29 @@ DATA_DIR.mkdir(exist_ok=True)
 USERS_FILE = DATA_DIR / "users.json"
 PROMO_CODES_FILE = DATA_DIR / "promo_codes.json"
 
+# Модели данных
+class OpenCaseRequest(BaseModel):
+    price: int
+
+class ActivatePromoRequest(BaseModel):
+    promo_code: str
+
+class WithdrawItemRequest(BaseModel):
+    item_id: Optional[str] = None
+    item_index: Optional[int] = None
+
+class SetTradeLinkRequest(BaseModel):
+    trade_link: str
+
 # Загрузка данных
 def load_users() -> Dict[str, Any]:
     """Загружает пользователей из файла"""
     try:
         if USERS_FILE.exists():
             with open(USERS_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                data = json.load(f)
+                logger.info(f"Загружено пользователей: {len(data)}")
+                return data
     except Exception as e:
         logger.error(f"Ошибка загрузки пользователей: {e}")
     return {}
@@ -61,17 +99,18 @@ def load_promo_codes() -> Dict[str, Any]:
                 for code in data:
                     if 'uses' not in data[code]:
                         data[code]['uses'] = 0
+                logger.info(f"Загружено промокодов: {len(data)}")
                 return data
     except Exception as e:
         logger.error(f"Ошибка загрузки промокодов: {e}")
     
     # Если файла нет, создаем дефолтные промокоды
     default_promos = {
-        "WELCOME1": {"points": 100, "max_uses": -1, "uses": 0},
-        "CS2FUN": {"points": 250, "max_uses": 100, "uses": 0},
-        "RANWORK": {"points": 500, "max_uses": 50, "uses": 0},
-        "START100": {"points": 100, "max_uses": -1, "uses": 0},
-        "MINIAPP": {"points": 200, "max_uses": 200, "uses": 0}
+        "WELCOME1": {"points": 100, "max_uses": -1, "uses": 0, "description": "Добро пожаловать!"},
+        "CS2FUN": {"points": 250, "max_uses": 100, "uses": 0, "description": "Для настоящих фанатов CS2"},
+        "RANWORK": {"points": 500, "max_uses": 50, "uses": 0, "description": "От создателей бота"},
+        "START100": {"points": 100, "max_uses": -1, "uses": 0, "description": "Стартовый бонус"},
+        "MINIAPP": {"points": 200, "max_uses": 200, "uses": 0, "description": "За запуск Mini App"}
     }
     save_promo_codes(default_promos)
     return default_promos
@@ -102,6 +141,10 @@ def save_promo_codes(promo_codes: Dict[str, Any]) -> bool:
 def validate_telegram_data(init_data: str) -> Dict[str, Any]:
     """Валидирует данные из Telegram Web App"""
     try:
+        if not init_data:
+            logger.warning("Пустые данные Telegram")
+            return {'valid': False, 'error': 'Пустые данные Telegram'}
+        
         # Разбираем параметры
         params = {}
         for item in init_data.split('&'):
@@ -164,12 +207,17 @@ def validate_telegram_data(init_data: str) -> Dict[str, Any]:
 # Зависимость для проверки аутентификации
 async def verify_telegram_auth(
     request: Request,
-    authorization: str = Header(None)
+    authorization: str = Header(None, alias="Authorization")
 ) -> Dict[str, Any]:
     """Проверяет аутентификацию через Telegram"""
     try:
+        logger.info(f"Запрос на аутентификацию: {request.url.path}")
+        
         if not authorization:
             logger.warning("Отсутствует заголовок Authorization")
+            # Для тестирования разрешаем без авторизации некоторые endpoints
+            if request.url.path in ["/api/health", "/api/available-promos", "/api/test"]:
+                return {'user': {'id': 1003215844, 'first_name': 'Test', 'username': 'test'}, 'valid': True}
             raise HTTPException(status_code=401, detail="Требуется аутентификация Telegram")
         
         if not authorization.startswith("tma "):
@@ -196,6 +244,7 @@ async def verify_telegram_auth(
             logger.warning(f"Данные аутентификации устарели: auth_time={auth_time}, current={current_time}")
             raise HTTPException(status_code=401, detail="Данные аутентификации устарели")
         
+        logger.info(f"Успешная аутентификация пользователя: {validated_data.get('user', {}).get('id')}")
         return validated_data
         
     except HTTPException:
@@ -206,22 +255,43 @@ async def verify_telegram_auth(
 
 # ===== API ENDPOINTS =====
 
-@app.get("/")
-async def root():
-    return {
-        "status": "online", 
-        "service": "CS2 Bot API",
-        "version": "1.0.0",
-        "timestamp": time.time()
-    }
+@app.get("/", response_class=HTMLResponse)
+async def serve_index():
+    """Отдача главной HTML страницы"""
+    try:
+        index_path = BASE_DIR / "index.html"
+        if index_path.exists():
+            with open(index_path, 'r', encoding='utf-8') as f:
+                html_content = f.read()
+            return HTMLResponse(content=html_content)
+        else:
+            return {
+                "status": "online", 
+                "service": "CS2 Bot API",
+                "version": "1.0.0",
+                "message": "HTML файл не найден, используйте API endpoints",
+                "timestamp": time.time()
+            }
+    except Exception as e:
+        logger.error(f"Ошибка загрузки index.html: {e}")
+        raise HTTPException(status_code=500, detail="Ошибка загрузки страницы")
+
+@app.get("/favicon.ico")
+async def favicon():
+    return FileResponse(BASE_DIR / "favicon.ico" if (BASE_DIR / "favicon.ico").exists() else BASE_DIR / "icon.png")
 
 @app.get("/api/health")
 async def health_check():
+    """Проверка здоровья API"""
     return {
         "status": "healthy", 
+        "service": "CS2 Bot API",
+        "version": "1.0.0",
         "timestamp": time.time(),
         "users_count": len(load_users()),
-        "promos_count": len(load_promo_codes())
+        "promos_count": len(load_promo_codes()),
+        "data_dir": str(DATA_DIR),
+        "telegram_bot": "connected" if TOKEN else "disconnected"
     }
 
 @app.get("/api/user")
@@ -252,16 +322,21 @@ async def get_user_data(auth_data: Dict[str, Any] = Depends(verify_telegram_auth
                 "referrals": [],
                 "inventory": [],
                 "used_promo_codes": [],
-                "referral_code": f"ref_{user_id}",
+                "referral_code": f"ref_{user_id}_{int(time.time())}",
                 "referred_by": None,
                 "last_daily_bonus": None,
                 "trade_link": None,
                 "steam_collab": None,
                 "telegram_collab": None,
-                "created_at": time.time()
+                "created_at": time.time(),
+                "last_active": time.time()
             }
             save_users(users)
             logger.info(f"Создан новый пользователь: {user_id}")
+        
+        # Обновляем время последней активности
+        users[user_key]["last_active"] = time.time()
+        save_users(users)
         
         user_data = users[user_key]
         
@@ -278,9 +353,11 @@ async def get_user_data(auth_data: Dict[str, Any] = Depends(verify_telegram_auth
                 "referral_code": user_data.get("referral_code"),
                 "trade_link": user_data.get("trade_link"),
                 "created_at": user_data.get("created_at"),
-                "referrals_count": len(user_data.get("referrals", []))
+                "referrals_count": len(user_data.get("referrals", [])),
+                "subscribed": user_data.get("subscribed", False)
             },
-            "daily_bonus_available": check_daily_bonus_available(user_data)
+            "daily_bonus_available": check_daily_bonus_available(user_data),
+            "server_time": time.time()
         }
         
     except HTTPException:
@@ -291,17 +368,17 @@ async def get_user_data(auth_data: Dict[str, Any] = Depends(verify_telegram_auth
 
 @app.post("/api/open-case")
 async def open_case(
-    data: Dict[str, Any],
+    data: OpenCaseRequest,
     auth_data: Dict[str, Any] = Depends(verify_telegram_auth)
 ):
     """Открытие кейса"""
     try:
         user_info = auth_data['user']
         user_id = user_info.get('id')
-        case_price = data.get('price')
+        case_price = data.price
         
-        if not case_price:
-            raise HTTPException(status_code=400, detail="Не указана цена кейса")
+        if not case_price or case_price <= 0:
+            raise HTTPException(status_code=400, detail="Неверная цена кейса")
         
         logger.info(f"Пользователь {user_id} открывает кейс за {case_price}")
         
@@ -315,29 +392,45 @@ async def open_case(
         user_data = users[user_key]
         
         # Проверяем баланс
-        if user_data.get('points', 0) < case_price:
+        user_balance = user_data.get('points', 0)
+        if user_balance < case_price:
             return JSONResponse(
                 status_code=200,
                 content={
                     "success": False,
                     "error": "Недостаточно баллов",
                     "required": case_price,
-                    "current": user_data.get('points', 0)
+                    "current": user_balance,
+                    "message": "Пополните баланс или выполните задания"
                 }
             )
         
         # Определяем выигрыш
         items_db = {
-            500: ["Наклейка | ENCE |", "Наклейка | Grayhound", "Наклейка | PGL |"],
-            3000: ["Наклейка | huNter |", "FAMAS | Колония", "UMP-45 | Внедорожник"],
-            5000: ["Five-SeveN | Хладагент", "Капсула с наклейками", "Наклейка | XD"],
+            500: [
+                {"name": "Наклейка | ENCE |", "type": "sticker", "rarity": "common"},
+                {"name": "Наклейка | Grayhound", "type": "sticker", "rarity": "common"},
+                {"name": "Наклейка | PGL |", "type": "sticker", "rarity": "common"}
+            ],
+            3000: [
+                {"name": "Наклейка | huNter |", "type": "sticker", "rarity": "uncommon"},
+                {"name": "FAMAS | Колония", "type": "weapon", "rarity": "uncommon"},
+                {"name": "UMP-45 | Внедорожник", "type": "weapon", "rarity": "uncommon"}
+            ],
+            5000: [
+                {"name": "Five-SeveN | Хладагент", "type": "weapon", "rarity": "rare"},
+                {"name": "Капсула с наклейками", "type": "case", "rarity": "rare"},
+                {"name": "Наклейка | XD", "type": "sticker", "rarity": "rare"}
+            ],
             10000: [
-                "Наклейка | Клоунский парик", "Наклейка | Высокий полёт",
-                "Sticker | From The Deep (Glitter)"
+                {"name": "Наклейка | Клоунский парик", "type": "sticker", "rarity": "epic"},
+                {"name": "Наклейка | Высокий полёт", "type": "sticker", "rarity": "epic"},
+                {"name": "Sticker | From The Deep (Glitter)", "type": "sticker", "rarity": "epic"}
             ],
             15000: [
-                "Наклейка | Гипноглаза", "Наклейка | Радужный путь",
-                "Брелок | Щепотка соли"
+                {"name": "Наклейка | Гипноглаза", "type": "sticker", "rarity": "legendary"},
+                {"name": "Наклейка | Радужный путь", "type": "sticker", "rarity": "legendary"},
+                {"name": "Брелок | Щепотка соли", "type": "collectible", "rarity": "legendary"}
             ],
         }
         
@@ -346,15 +439,14 @@ async def open_case(
         if not available_items:
             raise HTTPException(status_code=400, detail="Неверная цена кейса")
         
-        won_item = random.choice(available_items)
-        item_price = case_price // 2  # Оценочная стоимость предмета
+        # Выбираем предмет с учетом редкости
+        won_item_data = random.choice(available_items)
+        won_item = won_item_data["name"]
+        item_type = won_item_data["type"]
+        item_rarity = won_item_data["rarity"]
         
-        # Определяем тип предмета
-        item_type = "other"
-        if "Наклейка" in won_item:
-            item_type = "sticker"
-        elif any(weapon in won_item for weapon in ["FAMAS", "UMP", "Five-SeveN", "Капсула", "Брелок"]):
-            item_type = "weapon"
+        # Определяем цену предмета (от 50% до 150% от цены кейса)
+        item_price = int(case_price * random.uniform(0.5, 1.5))
         
         # Обновляем данные пользователя
         user_data['points'] = user_data.get('points', 0) - case_price
@@ -363,21 +455,26 @@ async def open_case(
             "name": won_item,
             "price": item_price,
             "type": item_type,
-            "received_at": time.time()
+            "rarity": item_rarity,
+            "received_at": time.time(),
+            "case_price": case_price
         })
         
         # Сохраняем изменения
         users[user_key] = user_data
         save_users(users)
         
-        logger.info(f"Пользователь {user_id} выиграл: {won_item}")
+        logger.info(f"Пользователь {user_id} выиграл: {won_item} (цена: {item_price})")
         
         return {
             "success": True,
             "item": won_item,
             "item_price": item_price,
+            "item_type": item_type,
+            "item_rarity": item_rarity,
             "new_balance": user_data['points'],
-            "inventory": user_data['inventory']
+            "inventory": user_data['inventory'],
+            "message": f"Вы получили: {won_item}"
         }
         
     except HTTPException:
@@ -408,17 +505,21 @@ async def claim_daily_bonus(
         
         # Проверяем доступность бонуса
         if not check_daily_bonus_available(user_data):
+            next_bonus = calculate_next_bonus_time(user_data)
             return JSONResponse(
                 status_code=200,
                 content={
                     "success": False,
                     "error": "Бонус уже получен сегодня",
-                    "next_available": calculate_next_bonus_time(user_data)
+                    "next_available": next_bonus,
+                    "next_available_human": time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(next_bonus)) if next_bonus else None,
+                    "message": "Возвращайтесь завтра!"
                 }
             )
         
-        # Начисляем бонус
-        bonus_amount = 50
+        # Начисляем бонус (от 50 до 150 баллов случайно)
+        import random
+        bonus_amount = random.randint(50, 150)
         user_data['points'] = user_data.get('points', 0) + bonus_amount
         user_data['last_daily_bonus'] = time.time()
         
@@ -432,7 +533,8 @@ async def claim_daily_bonus(
             "success": True,
             "bonus": bonus_amount,
             "new_balance": user_data['points'],
-            "next_available": calculate_next_bonus_time(user_data)
+            "next_available": calculate_next_bonus_time(user_data),
+            "message": f"Ежедневный бонус: +{bonus_amount} баллов!"
         }
         
     except HTTPException:
@@ -443,14 +545,14 @@ async def claim_daily_bonus(
 
 @app.post("/api/activate-promo")
 async def activate_promo_code(
-    data: Dict[str, Any],
+    data: ActivatePromoRequest,
     auth_data: Dict[str, Any] = Depends(verify_telegram_auth)
 ):
     """Активация промокода"""
     try:
         user_info = auth_data['user']
         user_id = user_info.get('id')
-        promo_code = data.get('promo_code', '').upper().strip()
+        promo_code = data.promo_code.upper().strip()
         
         if not promo_code:
             raise HTTPException(status_code=400, detail="Не указан промокод")
@@ -473,7 +575,8 @@ async def activate_promo_code(
                 status_code=200,
                 content={
                     "success": False,
-                    "error": "Промокод уже использован"
+                    "error": "Промокод уже использован",
+                    "message": "Вы уже активировали этот промокод ранее"
                 }
             )
         
@@ -483,7 +586,8 @@ async def activate_promo_code(
                 status_code=200,
                 content={
                     "success": False,
-                    "error": "Неверный промокод"
+                    "error": "Неверный промокод",
+                    "message": "Такого промокода не существует"
                 }
             )
         
@@ -495,7 +599,8 @@ async def activate_promo_code(
                 status_code=200,
                 content={
                     "success": False,
-                    "error": "Лимит использований исчерпан"
+                    "error": "Лимит использований исчерпан",
+                    "message": "Этот промокод больше не действителен"
                 }
             )
         
@@ -519,7 +624,9 @@ async def activate_promo_code(
             "success": True,
             "points": points,
             "new_balance": user_data['points'],
-            "promo_code": promo_code
+            "promo_code": promo_code,
+            "description": promo_data.get('description', ''),
+            "message": f"Промокод активирован! +{points} баллов"
         }
         
     except HTTPException:
@@ -530,15 +637,15 @@ async def activate_promo_code(
 
 @app.post("/api/withdraw-item")
 async def withdraw_item(
-    data: Dict[str, Any],
+    data: WithdrawItemRequest,
     auth_data: Dict[str, Any] = Depends(verify_telegram_auth)
 ):
     """Запрос на вывод предмета"""
     try:
         user_info = auth_data['user']
         user_id = user_info.get('id')
-        item_index = data.get('item_index')
-        item_id = data.get('item_id')
+        item_index = data.item_index
+        item_id = data.item_id
         
         if item_index is None and item_id is None:
             raise HTTPException(status_code=400, detail="Не указан предмет")
@@ -576,7 +683,8 @@ async def withdraw_item(
                 status_code=200,
                 content={
                     "success": False,
-                    "error": "Предмет не найден"
+                    "error": "Предмет не найден",
+                    "message": "Предмет не найден в вашем инвентаре"
                 }
             )
         
@@ -587,21 +695,22 @@ async def withdraw_item(
                 content={
                     "success": False,
                     "error": "Не указана трейд ссылка",
-                    "requires_trade_link": True
+                    "requires_trade_link": True,
+                    "message": "Для вывода предметов необходимо указать трейд ссылку Steam"
                 }
             )
         
-        # Отправляем уведомление администратору (симуляция)
+        # Отправляем уведомление администратору (в лог)
         admin_notification = {
             "user_id": user_id,
             "username": user_data.get('username'),
             "item": item,
             "trade_link": user_data.get('trade_link'),
             "timestamp": time.time(),
-            "type": "single"
+            "type": "withdraw_request"
         }
         
-        logger.info(f"Запрос на вывод предмета: {admin_notification}")
+        logger.info(f"Запрос на вывод предмета: {json.dumps(admin_notification, ensure_ascii=False)}")
         
         # Удаляем предмет из инвентаря
         user_data['inventory'].pop(item_idx)
@@ -614,7 +723,10 @@ async def withdraw_item(
             "success": True,
             "message": "Запрос отправлен администратору",
             "item": item['name'],
-            "remaining_items": len(user_data['inventory'])
+            "item_price": item.get('price', 0),
+            "remaining_items": len(user_data['inventory']),
+            "admin_notified": True,
+            "notification_id": str(int(time.time() * 1000))
         }
         
     except HTTPException:
@@ -625,14 +737,14 @@ async def withdraw_item(
 
 @app.post("/api/set-trade-link")
 async def set_trade_link(
-    data: Dict[str, Any],
+    data: SetTradeLinkRequest,
     auth_data: Dict[str, Any] = Depends(verify_telegram_auth)
 ):
     """Установка трейд ссылки"""
     try:
         user_info = auth_data['user']
         user_id = user_info.get('id')
-        trade_link = data.get('trade_link', '').strip()
+        trade_link = data.trade_link.strip()
         
         if not trade_link:
             raise HTTPException(status_code=400, detail="Не указана трейд ссылка")
@@ -640,12 +752,14 @@ async def set_trade_link(
         logger.info(f"Пользователь {user_id} устанавливает трейд ссылку")
         
         # Простая валидация ссылки
-        if "steamcommunity.com/tradeoffer/new/" not in trade_link:
+        if not ("steamcommunity.com/tradeoffer/new/" in trade_link or 
+                "steamcommunity.com/tradeoffer/" in trade_link):
             return JSONResponse(
                 status_code=200,
                 content={
                     "success": False,
-                    "error": "Неверный формат трейд ссылки"
+                    "error": "Неверный формат трейд ссылки",
+                    "message": "Ссылка должна быть на Steam Community Trade Offer"
                 }
             )
         
@@ -665,7 +779,8 @@ async def set_trade_link(
         return {
             "success": True,
             "message": "Трейд ссылка сохранена",
-            "trade_link": trade_link
+            "trade_link": trade_link,
+            "validated": True
         }
         
     except HTTPException:
@@ -687,12 +802,17 @@ async def get_available_promos():
                 available_promos.append({
                     "code": code,
                     "points": data['points'],
-                    "remaining_uses": data['max_uses'] - data['uses'] if data['max_uses'] != -1 else "∞"
+                    "description": data.get('description', ''),
+                    "remaining_uses": data['max_uses'] - data['uses'] if data['max_uses'] != -1 else "∞",
+                    "max_uses": data['max_uses'],
+                    "used": data['uses']
                 })
         
         return {
             "success": True,
-            "promos": available_promos
+            "promos": available_promos,
+            "total": len(available_promos),
+            "server_time": time.time()
         }
         
     except Exception as e:
@@ -702,14 +822,97 @@ async def get_available_promos():
 @app.get("/api/test")
 async def test_endpoint():
     """Тестовый endpoint для проверки работы API"""
-    return {
-        "success": True,
-        "message": "API работает корректно",
-        "timestamp": time.time(),
-        "users_file_exists": USERS_FILE.exists(),
-        "promo_file_exists": PROMO_CODES_FILE.exists(),
-        "data_dir": str(DATA_DIR)
-    }
+    try:
+        users = load_users()
+        promos = load_promo_codes()
+        
+        return {
+            "success": True,
+            "message": "API работает корректно",
+            "timestamp": time.time(),
+            "server_info": {
+                "python_version": os.sys.version,
+                "platform": os.sys.platform,
+                "data_dir": str(DATA_DIR),
+                "users_file_exists": USERS_FILE.exists(),
+                "promo_file_exists": PROMO_CODES_FILE.exists(),
+                "users_count": len(users),
+                "promos_count": len(promos)
+            },
+            "endpoints": [
+                "/api/health",
+                "/api/user",
+                "/api/open-case",
+                "/api/daily-bonus",
+                "/api/activate-promo",
+                "/api/withdraw-item",
+                "/api/set-trade-link",
+                "/api/available-promos"
+            ]
+        }
+    except Exception as e:
+        logger.error(f"Ошибка тестового endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Ошибка сервера")
+
+@app.get("/api/admin/stats")
+async def admin_stats(auth_data: Dict[str, Any] = Depends(verify_telegram_auth)):
+    """Статистика для администратора"""
+    try:
+        user_info = auth_data['user']
+        user_id = user_info.get('id')
+        
+        # Проверяем, является ли пользователь администратором
+        if user_id not in ADMIN_IDS:
+            raise HTTPException(status_code=403, detail="Доступ запрещен")
+        
+        users = load_users()
+        promos = load_promo_codes()
+        
+        # Считаем статистику
+        total_balance = sum(user.get('points', 0) for user in users.values())
+        total_inventory_items = sum(len(user.get('inventory', [])) for user in users.values())
+        total_inventory_value = sum(
+            sum(item.get('price', 0) for item in user.get('inventory', []))
+            for user in users.values()
+        )
+        
+        # Активные пользователи (за последние 7 дней)
+        week_ago = time.time() - 7 * 86400
+        active_users = sum(
+            1 for user in users.values() 
+            if user.get('last_active', 0) > week_ago
+        )
+        
+        return {
+            "success": True,
+            "stats": {
+                "total_users": len(users),
+                "active_users_7d": active_users,
+                "total_balance": total_balance,
+                "total_inventory_items": total_inventory_items,
+                "total_inventory_value": total_inventory_value,
+                "promo_codes_total": len(promos),
+                "promo_codes_used": sum(promo.get('uses', 0) for promo in promos.values()),
+                "server_time": time.time()
+            },
+            "recent_users": [
+                {
+                    "id": user_id,
+                    "username": user.get('username'),
+                    "balance": user.get('points', 0),
+                    "inventory": len(user.get('inventory', [])),
+                    "created_at": user.get('created_at'),
+                    "last_active": user.get('last_active')
+                }
+                for user_id, user in list(users.items())[:10]  # Последние 10 пользователей
+            ]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка получения статистики: {e}")
+        raise HTTPException(status_code=500, detail="Ошибка сервера")
 
 # Вспомогательные функции
 def check_daily_bonus_available(user_data: Dict[str, Any]) -> bool:
@@ -731,31 +934,71 @@ def calculate_next_bonus_time(user_data: Dict[str, Any]) -> int:
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start_time = time.time()
+    
+    # Пропускаем health check из логов чтобы не засорять
+    if request.url.path != "/api/health":
+        logger.info(f"👉 {request.method} {request.url.path} - Client: {request.client.host if request.client else 'unknown'}")
+    
     response = await call_next(request)
     process_time = time.time() - start_time
-    logger.info(f"{request.method} {request.url.path} - {response.status_code} - {process_time:.3f}s")
+    
+    if request.url.path != "/api/health":
+        logger.info(f"👈 {request.method} {request.url.path} - {response.status_code} - {process_time:.3f}s")
+    
+    # Добавляем CORS заголовки
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    
     return response
 
-if __name__ == "__main__":
-    import uvicorn
+# Обработчик OPTIONS запросов для CORS
+@app.options("/{rest_of_path:path}")
+async def preflight_handler(request: Request, rest_of_path: str):
+    response = JSONResponse(content={"status": "ok"})
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Access-Control-Max-Age"] = "600"
+    return response
+
+# Инициализация при запуске
+@app.on_event("startup")
+async def startup_event():
+    """Инициализация при запуске сервера"""
+    logger.info("🚀 Запуск CS2 Bot API сервера...")
     
     # Проверяем создание директорий
     DATA_DIR.mkdir(exist_ok=True)
     
     # Инициализируем файлы если нужно
-    load_users()
-    load_promo_codes()
+    users_count = len(load_users())
+    promos_count = len(load_promo_codes())
+    
+    logger.info(f"📊 Инициализация завершена:")
+    logger.info(f"   👥 Пользователей: {users_count}")
+    logger.info(f"   🎫 Промокодов: {promos_count}")
+    logger.info(f"   📁 Директория данных: {DATA_DIR}")
+    logger.info(f"   🤖 Токен бота: {TOKEN[:8]}...{TOKEN[-4:] if len(TOKEN) > 12 else ''}")
+    logger.info(f"   🔧 Админы: {ADMIN_IDS}")
+
+# Точка входа для WSGI
+if __name__ == "__main__":
+    import uvicorn
     
     # Получаем порт из переменной окружения или используем 8000
     port = int(os.environ.get("PORT", 8000))
     
-    logger.info(f"Запуск API сервера на порту {port}")
-    logger.info(f"Токен бота: {TOKEN[:10]}...")
-    logger.info(f"Директория данных: {DATA_DIR}")
+    logger.info(f"🌐 Запуск сервера на http://0.0.0.0:{port}")
+    logger.info(f"📚 Документация: http://0.0.0.0:{port}/docs")
+    logger.info(f"🔍 Тест API: http://0.0.0.0:{port}/api/test")
     
     uvicorn.run(
         app, 
         host="0.0.0.0", 
         port=port,
-        log_level="info"
+        log_level="info",
+        access_log=True
     )
