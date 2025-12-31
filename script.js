@@ -2,7 +2,7 @@
 const tg = window.Telegram.WebApp;
 
 // Конфигурация API
-const API_BASE_URL = "https://cs2-mini-app-secure.onrender.com"; // Ваш реальный URL
+const API_BASE_URL = "https://cs2-mini-app.onrender.com"; // Ваш URL на Render
 
 // Состояние приложения
 let appState = {
@@ -1084,3 +1084,4 @@ window.closeApp = closeApp;
 window.openTelegramCollab = openTelegramCollab;
 window.openSteamCollab = openSteamCollab;
 window.showDailyTasks = showDailyTasks;
+
