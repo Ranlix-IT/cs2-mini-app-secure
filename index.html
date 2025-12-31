@@ -17,8 +17,7 @@
                    media-src 'self';
                    object-src 'none';
                    base-uri 'self';
-                   form-action 'self';
-                   frame-ancestors 'none';">
+                   form-action 'self';">
     
     <!-- Telegram Web App SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js?1"></script>
@@ -51,7 +50,7 @@
                     </div>
                 </div>
             </div>
-            <button class="menu-btn" onclick="toggleMenu()">
+            <button class="menu-btn" id="menu-btn">
                 <i class="fas fa-bars"></i>
             </button>
         </header>
@@ -66,9 +65,9 @@
                     </div>
                     <div class="bonus-info">
                         <h4>Ежедневный бонус</h4>
-                        <p>Получи 50 баллов каждый день</p>
+                        <p>Получи 50-150 баллов каждый день</p>
                     </div>
-                    <button class="bonus-btn" id="daily-bonus-btn" onclick="claimDailyBonus()">
+                    <button class="bonus-btn" id="daily-bonus-btn">
                         <i class="fas fa-gift"></i> Забрать
                     </button>
                 </div>
@@ -83,28 +82,28 @@
                     <i class="fas fa-bolt"></i> Быстрые действия
                 </h3>
                 <div class="actions-grid">
-                    <button class="action-btn primary" onclick="openSection('cases')">
+                    <button class="action-btn primary" data-section="cases">
                         <div class="action-icon">
                             <i class="fas fa-box-open"></i>
                         </div>
                         <span>Кейсы</span>
                     </button>
                     
-                    <button class="action-btn success" onclick="openSection('inventory')">
+                    <button class="action-btn success" data-section="inventory">
                         <div class="action-icon">
                             <i class="fas fa-archive"></i>
                         </div>
                         <span>Инвентарь</span>
                     </button>
                     
-                    <button class="action-btn warning" onclick="openSection('earn')">
+                    <button class="action-btn warning" data-section="earn">
                         <div class="action-icon">
                             <i class="fas fa-money-bill-wave"></i>
                         </div>
                         <span>Заработать</span>
                     </button>
                     
-                    <button class="action-btn info" onclick="openSection('promo')">
+                    <button class="action-btn info" data-section="promo">
                         <div class="action-icon">
                             <i class="fas fa-ticket-alt"></i>
                         </div>
@@ -116,14 +115,14 @@
             <!-- Cases Section -->
             <section id="cases-section" class="page-section hidden">
                 <div class="section-header">
-                    <button class="back-btn" onclick="backToMain()">
+                    <button class="back-btn">
                         <i class="fas fa-arrow-left"></i>
                     </button>
                     <h2><i class="fas fa-box-open"></i> Кейсы</h2>
                 </div>
                 
                 <div class="cases-container">
-                    <div class="case-card" data-price="500" onclick="openCase(500)">
+                    <div class="case-card" data-price="500">
                         <div class="case-header basic">
                             <i class="fas fa-box"></i>
                             <span class="case-badge">Базовый</span>
@@ -145,7 +144,7 @@
                         </div>
                     </div>
                     
-                    <div class="case-card" data-price="3000" onclick="openCase(3000)">
+                    <div class="case-card" data-price="3000">
                         <div class="case-header advanced">
                             <i class="fas fa-box-open"></i>
                             <span class="case-badge">Продвинутый</span>
@@ -167,7 +166,7 @@
                         </div>
                     </div>
                     
-                    <div class="case-card" data-price="5000" onclick="openCase(5000)">
+                    <div class="case-card" data-price="5000">
                         <div class="case-header premium">
                             <i class="fas fa-gem"></i>
                             <span class="case-badge">Премиум</span>
@@ -189,7 +188,7 @@
                         </div>
                     </div>
                     
-                    <div class="case-card" data-price="10000" onclick="openCase(10000)">
+                    <div class="case-card" data-price="10000">
                         <div class="case-header elite">
                             <i class="fas fa-crown"></i>
                             <span class="case-badge">Элитный</span>
@@ -211,7 +210,7 @@
                         </div>
                     </div>
                     
-                    <div class="case-card" data-price="15000" onclick="openCase(15000)">
+                    <div class="case-card" data-price="15000">
                         <div class="case-header legendary">
                             <i class="fas fa-fire"></i>
                             <span class="case-badge">Легендарный</span>
@@ -238,7 +237,7 @@
             <!-- Inventory Section -->
             <section id="inventory-section" class="page-section hidden">
                 <div class="section-header">
-                    <button class="back-btn" onclick="backToMain()">
+                    <button class="back-btn">
                         <i class="fas fa-arrow-left"></i>
                     </button>
                     <h2><i class="fas fa-archive"></i> Инвентарь</h2>
@@ -268,10 +267,10 @@
                 
                 <div class="inventory-container">
                     <div class="inventory-filters">
-                        <button class="filter-btn active" onclick="filterInventory('all')">Все</button>
-                        <button class="filter-btn" onclick="filterInventory('sticker')">Наклейки</button>
-                        <button class="filter-btn" onclick="filterInventory('weapon')">Оружие</button>
-                        <button class="filter-btn" onclick="filterInventory('other')">Прочее</button>
+                        <button class="filter-btn active" data-filter="all">Все</button>
+                        <button class="filter-btn" data-filter="sticker">Наклейки</button>
+                        <button class="filter-btn" data-filter="weapon">Оружие</button>
+                        <button class="filter-btn" data-filter="other">Прочее</button>
                     </div>
                     
                     <div class="inventory-list" id="inventory-list">
@@ -279,7 +278,7 @@
                     </div>
                     
                     <div class="inventory-actions">
-                        <button class="withdraw-all-btn" onclick="withdrawAllItems()">
+                        <button class="withdraw-all-btn" id="withdraw-all-btn">
                             <i class="fas fa-download"></i> Вывести все
                         </button>
                     </div>
@@ -289,7 +288,7 @@
             <!-- Earn Section -->
             <section id="earn-section" class="page-section hidden">
                 <div class="section-header">
-                    <button class="back-btn" onclick="backToMain()">
+                    <button class="back-btn">
                         <i class="fas fa-arrow-left"></i>
                     </button>
                     <h2><i class="fas fa-money-bill-wave"></i> Заработать</h2>
@@ -307,7 +306,7 @@
                                 <i class="fas fa-coins"></i> +500 баллов
                             </div>
                         </div>
-                        <button class="earn-btn" onclick="copyReferralLink()">
+                        <button class="earn-btn" id="copy-referral-btn">
                             <i class="fas fa-copy"></i> Копировать ссылку
                         </button>
                     </div>
@@ -323,7 +322,7 @@
                                 <i class="fas fa-coins"></i> +500 баллов/7 дней
                             </div>
                         </div>
-                        <button class="earn-btn" onclick="openTelegramCollab()">
+                        <button class="earn-btn" id="telegram-collab-btn">
                             <i class="fas fa-rocket"></i> Начать
                         </button>
                     </div>
@@ -339,7 +338,7 @@
                                 <i class="fas fa-coins"></i> +500 баллов/7 дней
                             </div>
                         </div>
-                        <button class="earn-btn" onclick="openSteamCollab()">
+                        <button class="earn-btn" id="steam-collab-btn">
                             <i class="fas fa-rocket"></i> Начать
                         </button>
                     </div>
@@ -355,7 +354,7 @@
                                 <i class="fas fa-coins"></i> +100 баллов/день
                             </div>
                         </div>
-                        <button class="earn-btn" onclick="showDailyTasks()">
+                        <button class="earn-btn" id="daily-tasks-btn">
                             <i class="fas fa-tasks"></i> Показать задания
                         </button>
                     </div>
@@ -365,7 +364,7 @@
             <!-- Promo Code Section -->
             <section id="promo-section" class="page-section hidden">
                 <div class="section-header">
-                    <button class="back-btn" onclick="backToMain()">
+                    <button class="back-btn">
                         <i class="fas fa-arrow-left"></i>
                     </button>
                     <h2><i class="fas fa-ticket-alt"></i> Промокод</h2>
@@ -377,7 +376,7 @@
                                id="promo-code-input" 
                                placeholder="Введите промокод"
                                maxlength="20">
-                        <button class="promo-submit-btn" onclick="activatePromoCode()">
+                        <button class="promo-submit-btn" id="activate-promo-btn">
                             <i class="fas fa-check"></i> Активировать
                         </button>
                     </div>
@@ -394,7 +393,7 @@
             <!-- Profile Section -->
             <section id="profile-section" class="page-section hidden">
                 <div class="section-header">
-                    <button class="back-btn" onclick="backToMain()">
+                    <button class="back-btn">
                         <i class="fas fa-arrow-left"></i>
                     </button>
                     <h2><i class="fas fa-user-circle"></i> Профиль</h2>
@@ -421,7 +420,7 @@
                                        id="trade-link-input" 
                                        placeholder="https://steamcommunity.com/tradeoffer/new/..."
                                        maxlength="200">
-                                <button class="trade-link-submit-btn" onclick="setTradeLink()">
+                                <button class="trade-link-submit-btn" id="save-trade-link-btn">
                                     <i class="fas fa-save"></i> Сохранить
                                 </button>
                             </div>
@@ -433,7 +432,7 @@
                         <div class="referral-section">
                             <h4><i class="fas fa-user-plus"></i> Пригласить друга</h4>
                             <p>Дайте эту ссылку друзьям и получите 500 баллов за каждого</p>
-                            <button class="referral-btn" onclick="copyReferralLink()">
+                            <button class="referral-btn" id="copy-ref-link-btn">
                                 <i class="fas fa-copy"></i> Скопировать реферальную ссылку
                             </button>
                         </div>
@@ -451,7 +450,7 @@
                     <div class="won-item" id="won-item">
                         <!-- Won item will appear here -->
                     </div>
-                    <button class="close-opening-btn" onclick="closeCaseOpening()">
+                    <button class="close-opening-btn" id="close-opening-btn">
                         <i class="fas fa-times"></i> Закрыть
                     </button>
                 </div>
@@ -460,7 +459,7 @@
 
         <!-- Side Menu -->
         <div class="side-menu" id="side-menu">
-            <div class="menu-overlay" onclick="toggleMenu()"></div>
+            <div class="menu-overlay" id="menu-overlay"></div>
             <div class="menu-content">
                 <div class="menu-header">
                     <div class="menu-user">
@@ -472,33 +471,33 @@
                             <p id="menu-balance">0 баллов</p>
                         </div>
                     </div>
-                    <button class="menu-close-btn" onclick="toggleMenu()">
+                    <button class="menu-close-btn" id="menu-close-btn">
                         <i class="fas fa-times"></i>
                     </button>
                 </div>
                 
                 <div class="menu-items">
-                    <a class="menu-item" onclick="openSection('profile'); toggleMenu(false)">
+                    <a class="menu-item" data-section="profile">
                         <i class="fas fa-user-circle"></i>
                         <span>Профиль</span>
                     </a>
                     
-                    <a class="menu-item" onclick="openSection('inventory'); toggleMenu(false)">
+                    <a class="menu-item" data-section="inventory">
                         <i class="fas fa-archive"></i>
                         <span>Инвентарь</span>
                     </a>
                     
-                    <a class="menu-item" onclick="openSection('cases'); toggleMenu(false)">
+                    <a class="menu-item" data-section="cases">
                         <i class="fas fa-box-open"></i>
                         <span>Кейсы</span>
                     </a>
                     
-                    <a class="menu-item" onclick="openSection('earn'); toggleMenu(false)">
+                    <a class="menu-item" data-section="earn">
                         <i class="fas fa-money-bill-wave"></i>
                         <span>Заработать</span>
                     </a>
                     
-                    <a class="menu-item" onclick="openSection('promo'); toggleMenu(false)">
+                    <a class="menu-item" data-section="promo">
                         <i class="fas fa-ticket-alt"></i>
                         <span>Промокоды</span>
                     </a>
@@ -517,7 +516,7 @@
                     
                     <div class="menu-divider"></div>
                     
-                    <a class="menu-item logout" onclick="closeApp()">
+                    <a class="menu-item logout" id="logout-btn">
                         <i class="fas fa-sign-out-alt"></i>
                         <span>Закрыть приложение</span>
                     </a>
