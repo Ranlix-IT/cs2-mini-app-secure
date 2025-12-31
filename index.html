@@ -309,7 +309,7 @@
                                 <i class="fas fa-coins"></i> +500 баллов/7 дней
                             </div>
                         </div>
-                        <button class="earn-btn" onclick="openSection('telegram-collab')">
+                        <button class="earn-btn" onclick="openTelegramCollab()">
                             <i class="fas fa-rocket"></i> Начать
                         </button>
                     </div>
@@ -325,7 +325,7 @@
                                 <i class="fas fa-coins"></i> +500 баллов/7 дней
                             </div>
                         </div>
-                        <button class="earn-btn" onclick="openSection('steam-collab')">
+                        <button class="earn-btn" onclick="openSteamCollab()">
                             <i class="fas fa-rocket"></i> Начать
                         </button>
                     </div>
@@ -370,19 +370,58 @@
                     
                     <div class="active-promos">
                         <h4>Активные промокоды:</h4>
-                        <div class="promo-list">
-                            <div class="promo-item">
-                                <span class="promo-code">MINI1</span>
-                                <span class="promo-reward">+50 баллов</span>
+                        <div class="promo-list" id="promo-list">
+                            <!-- Promo codes will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Profile Section -->
+            <section id="profile-section" class="page-section hidden">
+                <div class="section-header">
+                    <button class="back-btn" onclick="backToMain()">
+                        <i class="fas fa-arrow-left"></i>
+                    </button>
+                    <h2><i class="fas fa-user-circle"></i> Профиль</h2>
+                </div>
+                
+                <div class="profile-container">
+                    <div class="profile-info">
+                        <div class="profile-avatar" id="profile-avatar">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        <div class="profile-details">
+                            <h3 id="profile-name">Пользователь</h3>
+                            <p>ID: <span id="profile-id">123456789</span></p>
+                            <p>Реферальный код: <span id="profile-ref-code">ref_123456789</span></p>
+                            <p>Приглашено друзей: <span id="profile-ref-count">0</span></p>
+                        </div>
+                    </div>
+                    
+                    <div class="profile-actions">
+                        <div class="trade-link-section">
+                            <h4><i class="fas fa-link"></i> Трейд ссылка Steam</h4>
+                            <div class="trade-link-input-group">
+                                <input type="text" 
+                                       id="trade-link-input" 
+                                       placeholder="https://steamcommunity.com/tradeoffer/new/..."
+                                       maxlength="200">
+                                <button class="trade-link-submit-btn" onclick="setTradeLink()">
+                                    <i class="fas fa-save"></i> Сохранить
+                                </button>
                             </div>
-                            <div class="promo-item">
-                                <span class="promo-code">1JKLM</span>
-                                <span class="promo-reward">+100 баллов</span>
-                            </div>
-                            <div class="promo-item">
-                                <span class="promo-code">RWTUBE</span>
-                                <span class="promo-reward">+250 баллов</span>
-                            </div>
+                            <p class="help-text">
+                                Получите трейд ссылку в Steam: Настройки → Инвентарь → Кто может мне обменять → Третья ссылка
+                            </p>
+                        </div>
+                        
+                        <div class="referral-section">
+                            <h4><i class="fas fa-user-plus"></i> Пригласить друга</h4>
+                            <p>Дайте эту ссылку друзьям и получите 500 баллов за каждого</p>
+                            <button class="referral-btn" onclick="copyReferralLink()">
+                                <i class="fas fa-copy"></i> Скопировать реферальную ссылку
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -425,35 +464,44 @@
                 </div>
                 
                 <div class="menu-items">
-                    <a class="menu-item" onclick="openSection('profile')">
+                    <a class="menu-item" onclick="openSection('profile'); toggleMenu(false)">
                         <i class="fas fa-user-circle"></i>
                         <span>Профиль</span>
                     </a>
                     
-                    <a class="menu-item" onclick="openSection('withdraw')">
-                        <i class="fas fa-download"></i>
-                        <span>Вывод средств</span>
+                    <a class="menu-item" onclick="openSection('inventory'); toggleMenu(false)">
+                        <i class="fas fa-archive"></i>
+                        <span>Инвентарь</span>
                     </a>
                     
-                    <a class="menu-item" onclick="openSection('history')">
-                        <i class="fas fa-history"></i>
-                        <span>История операций</span>
+                    <a class="menu-item" onclick="openSection('cases'); toggleMenu(false)">
+                        <i class="fas fa-box-open"></i>
+                        <span>Кейсы</span>
                     </a>
                     
-                    <a class="menu-item" onclick="openSection('settings')">
-                        <i class="fas fa-cog"></i>
-                        <span>Настройки</span>
+                    <a class="menu-item" onclick="openSection('earn'); toggleMenu(false)">
+                        <i class="fas fa-money-bill-wave"></i>
+                        <span>Заработать</span>
                     </a>
                     
-                    <a class="menu-item" onclick="openSection('help')">
-                        <i class="fas fa-question-circle"></i>
-                        <span>Помощь</span>
+                    <a class="menu-item" onclick="openSection('promo'); toggleMenu(false)">
+                        <i class="fas fa-ticket-alt"></i>
+                        <span>Промокоды</span>
                     </a>
                     
-                    <a class="menu-item" onclick="sendToBot('open_bot')">
+                    <div class="menu-divider"></div>
+                    
+                    <a class="menu-item" href="https://t.me/ranworkcs" target="_blank">
+                        <i class="fab fa-telegram"></i>
+                        <span>Наш канал</span>
+                    </a>
+                    
+                    <a class="menu-item" href="https://t.me/MeteoHinfoBot" target="_blank">
                         <i class="fab fa-telegram"></i>
                         <span>Открыть бота</span>
                     </a>
+                    
+                    <div class="menu-divider"></div>
                     
                     <a class="menu-item logout" onclick="closeApp()">
                         <i class="fas fa-sign-out-alt"></i>
