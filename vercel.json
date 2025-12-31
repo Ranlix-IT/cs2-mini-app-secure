@@ -16,6 +16,10 @@
         {
           "key": "Content-Security-Policy",
           "value": "default-src 'self' https://telegram.org https://cdnjs.cloudflare.com https://api.telegram.org https://cs2-mini-app-api.onrender.com; script-src 'self' 'unsafe-inline' https://telegram.org; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; img-src 'self' data: https:; font-src 'self' https://cdnjs.cloudflare.com;"
+        },
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
         }
       ]
     }
