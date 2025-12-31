@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CS2 Skin Bot</title>
+    <meta name="telegram-web-app-bot-domain" content="web.telegram.org">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="manifest" href="manifest.json">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="user-info">
+                <div class="avatar" id="user-avatar">👤</div>
+                <div>
+                    <div class="user-name" id="user-name">Загрузка...</div>
+                    <div class="user-balance" id="user-balance">0 баллов</div>
+                </div>
+            </div>
+            <button class="menu-btn" onclick="toggleMenu()">☰</button>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Balance Card -->
+            <div class="balance-card">
+                <h2>💰 Ваш баланс</h2>
+                <div class="balance-amount" id="balance">0</div>
+                <button class="btn-primary" onclick="claimBonus()">🎁 Получить бонус</button>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="actions-grid">
+                <div class="action-card" onclick="openSection('cases')">
+                    <div class="icon">🎮</div>
+                    <span>Кейсы</span>
+                </div>
+                <div class="action-card" onclick="openSection('inventory')">
+                    <div class="icon">📦</div>
+                    <span>Инвентарь</span>
+                </div>
+                <div class="action-card" onclick="openSection('earn')">
+                    <div class="icon">💰</div>
+                    <span>Заработать</span>
+                </div>
+                <div class="action-card" onclick="openSection('promo')">
+                    <div class="icon">🎁</div>
+                    <span>Промокоды</span>
+                </div>
+            </div>
+
+            <!-- Cases Section -->
+            <section id="cases-section" class="section hidden">
+                <h2>🎮 Выберите кейс</h2>
+                <div class="cases-grid">
+                    <div class="case-item" onclick="openCase(500)">
+                        <h3>Базовый</h3>
+                        <p>500 баллов</p>
+                    </div>
+                    <div class="case-item" onclick="openCase(3000)">
+                        <h3>Продвинутый</h3>
+                        <p>3000 баллов</p>
+                    </div>
+                    <div class="case-item" onclick="openCase(5000)">
+                        <h3>Премиум</h3>
+                        <p>5000 баллов</p>
+                    </div>
+                </div>
+                <button class="btn-back" onclick="backToMain()">← Назад</button>
+            </section>
+
+            <!-- Inventory Section -->
+            <section id="inventory-section" class="section hidden">
+                <h2>📦 Ваш инвентарь</h2>
+                <div class="inventory-list" id="inventory-list">
+                    <p class="empty">Инвентарь пуст</p>
+                </div>
+                <button class="btn-back" onclick="backToMain()">← Назад</button>
+            </section>
+        </main>
+
+        <!-- Side Menu -->
+        <div class="side-menu" id="side-menu">
+            <div class="menu-header">
+                <h3>Меню</h3>
+                <button class="close-btn" onclick="toggleMenu()">×</button>
+            </div>
+            <div class="menu-items">
+                <div onclick="openSection('profile')">👤 Профиль</div>
+                <div onclick="openSection('withdraw')">💸 Вывод</div>
+                <div onclick="openSection('help')">❓ Помощь</div>
+                <div onclick="sendToBot('open_bot')">💬 Открыть бота</div>
+                <div onclick="closeApp()">❌ Закрыть</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
