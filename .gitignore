@@ -1,7 +1,0 @@
-# Файлы для развертывания
-render.yaml
-Dockerfile
-.dockerignore
-
-# Файлы для конкретных платформ
-Procfile
