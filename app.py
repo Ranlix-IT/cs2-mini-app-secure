@@ -30,18 +30,7 @@ app = FastAPI(
 # Настройка CORS для Telegram Mini Apps
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://web.telegram.org",
-        "https://tg-web.telegram.org",
-        "https://telegram.org",
-        "https://*.telegram.org",
-        "https://*.t.me",
-        "http://localhost:*",
-        "http://127.0.0.1:*",
-        "https://cs2-mini-app.onrender.com",
-        "https://cs2-mini-app-secure.onrender.com",
-        "*"  # Для тестирования
-    ],
+    allow_origins=["*"],  # Для тестирования
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
     allow_headers=["*"],
@@ -341,11 +330,33 @@ async def verify_telegram_auth(
     try:
         logger.info(f"Запрос на аутентификацию: {request.url.path}")
         
+        # Разрешаем тестирование без авторизации для всех API endpoints
+        # В продакшене это должно быть отключено!
+        DEBUG_MODE = os.environ.get('DEBUG_MODE', 'True') == 'True'
+        
+        if DEBUG_MODE:
+            if not authorization or not authorization.startswith("tma "):
+                logger.info("🔧 Демо-режим: использование тестовых данных")
+                return {
+                    'user': {
+                        'id': 1003215844,
+                        'first_name': 'Тестовый',
+                        'username': 'test_user',
+                        'last_name': 'Пользователь'
+                    },
+                    'valid': True,
+                    'demo_mode': True
+                }
+        
         if not authorization:
             logger.warning("Отсутствует заголовок Authorization")
             # Для тестирования разрешаем без авторизации некоторые endpoints
-            if request.url.path in ["/api/health", "/api/available-promos", "/api/test"]:
-                return {'user': {'id': 1003215844, 'first_name': 'Test', 'username': 'test'}, 'valid': True}
+            if request.url.path in ["/api/health", "/api/available-promos", "/api/test", "/"]:
+                return {
+                    'user': {'id': 1003215844, 'first_name': 'Test', 'username': 'test'}, 
+                    'valid': True,
+                    'demo_mode': True
+                }
             raise HTTPException(status_code=401, detail="Требуется аутентификация Telegram")
         
         if not authorization.startswith("tma "):
@@ -373,6 +384,7 @@ async def verify_telegram_auth(
             raise HTTPException(status_code=401, detail="Данные аутентификации устарели")
         
         logger.info(f"Успешная аутентификация пользователя: {validated_data.get('user', {}).get('id')}")
+        validated_data['demo_mode'] = False
         return validated_data
         
     except HTTPException:
@@ -411,6 +423,16 @@ async def favicon():
 @app.get("/manifest.json")
 async def serve_manifest():
     """Отдача манифеста PWA"""
+    try:
+        manifest_path = BASE_DIR / "manifest.json"
+        if manifest_path.exists():
+            with open(manifest_path, 'r', encoding='utf-8') as f:
+                manifest_data = json.load(f)
+            return JSONResponse(content=manifest_data)
+    except Exception as e:
+        logger.error(f"Ошибка загрузки манифеста: {e}")
+    
+    # Fallback манифест
     manifest = {
         "name": "CS2 Skin Bot",
         "short_name": "CS2 Bot",
@@ -430,20 +452,6 @@ async def serve_manifest():
                 "type": "image/svg+xml",
                 "purpose": "any"
             }
-        ],
-        "shortcuts": [
-            {
-                "name": "Открыть кейс",
-                "short_name": "Кейсы",
-                "description": "Быстрый доступ к открытию кейсов",
-                "url": "/?section=cases"
-            },
-            {
-                "name": "Инвентарь",
-                "short_name": "Инвентарь",
-                "description": "Просмотр ваших предметов",
-                "url": "/?section=inventory"
-            }
         ]
     }
     return JSONResponse(content=manifest)
@@ -459,7 +467,8 @@ async def health_check():
         "users_count": len(load_users()),
         "promos_count": len(load_promo_codes()),
         "data_dir": str(DATA_DIR),
-        "telegram_bot": "connected" if TOKEN else "disconnected"
+        "telegram_bot": "connected" if TOKEN else "disconnected",
+        "debug_mode": os.environ.get('DEBUG_MODE', 'True')
     }
 
 @app.get("/api/user")
@@ -468,12 +477,13 @@ async def get_user_data(auth_data: Dict[str, Any] = Depends(verify_telegram_auth
     try:
         user_info = auth_data['user']
         user_id = user_info.get('id')
+        demo_mode = auth_data.get('demo_mode', False)
         
         if not user_id:
             logger.warning("ID пользователя не найден")
             raise HTTPException(status_code=400, detail="ID пользователя не найден")
         
-        logger.info(f"Получение данных пользователя: {user_id}")
+        logger.info(f"Получение данных пользователя: {user_id} (demo: {demo_mode})")
         
         # Загружаем данные пользователя
         users = load_users()
@@ -538,7 +548,7 @@ async def get_user_data(auth_data: Dict[str, Any] = Depends(verify_telegram_auth
         user_data = users[user_key]
         
         # Формируем ответ
-        return {
+        response = {
             "success": True,
             "user": {
                 "id": user_id,
@@ -560,6 +570,12 @@ async def get_user_data(auth_data: Dict[str, Any] = Depends(verify_telegram_auth
             "stats": user_data.get("stats", {})
         }
         
+        if demo_mode:
+            response["demo_mode"] = True
+            response["message"] = "Демо-режим: используются тестовые данные"
+        
+        return response
+        
     except HTTPException:
         raise
     except Exception as e:
@@ -574,13 +590,14 @@ async def open_case(
     """Открытие кейса"""
     try:
         user_info = auth_data['user']
+        demo_mode = auth_data.get('demo_mode', False)
         user_id = user_info.get('id')
         case_price = data.price
         
         if not case_price or case_price <= 0:
             raise HTTPException(status_code=400, detail="Неверная цена кейса")
         
-        logger.info(f"Пользователь {user_id} открывает кейс за {case_price}")
+        logger.info(f"Пользователь {user_id} открывает кейс за {case_price} (demo: {demo_mode})")
         
         # Загружаем данные
         users = load_users()
@@ -666,7 +683,7 @@ async def open_case(
         
         logger.info(f"Пользователь {user_id} выиграл: {won_item} (цена: {item_price})")
         
-        return {
+        response = {
             "success": True,
             "item": won_item,
             "item_price": item_price,
@@ -676,6 +693,11 @@ async def open_case(
             "inventory": user_data['inventory'],
             "message": f"Вы получили: {won_item}"
         }
+        
+        if demo_mode:
+            response["demo_mode"] = True
+        
+        return response
         
     except HTTPException:
         raise
@@ -690,9 +712,10 @@ async def claim_daily_bonus(
     """Получение ежедневного бонуса"""
     try:
         user_info = auth_data['user']
+        demo_mode = auth_data.get('demo_mode', False)
         user_id = user_info.get('id')
         
-        logger.info(f"Пользователь {user_id} запрашивает ежедневный бонус")
+        logger.info(f"Пользователь {user_id} запрашивает ежедневный бонус (demo: {demo_mode})")
         
         # Загружаем данные
         users = load_users()
@@ -729,13 +752,18 @@ async def claim_daily_bonus(
         
         logger.info(f"Пользователь {user_id} получил бонус: {bonus_amount}")
         
-        return {
+        response = {
             "success": True,
             "bonus": bonus_amount,
             "new_balance": user_data['points'],
             "next_available": calculate_next_bonus_time(user_data),
             "message": f"Ежедневный бонус: +{bonus_amount} баллов!"
         }
+        
+        if demo_mode:
+            response["demo_mode"] = True
+        
+        return response
         
     except HTTPException:
         raise
@@ -751,13 +779,14 @@ async def activate_promo_code(
     """Активация промокода"""
     try:
         user_info = auth_data['user']
+        demo_mode = auth_data.get('demo_mode', False)
         user_id = user_info.get('id')
         promo_code = data.promo_code.upper().strip()
         
         if not promo_code:
             raise HTTPException(status_code=400, detail="Не указан промокод")
         
-        logger.info(f"Пользователь {user_id} активирует промокод: {promo_code}")
+        logger.info(f"Пользователь {user_id} активирует промокод: {promo_code} (demo: {demo_mode})")
         
         # Загружаем данные
         users = load_users()
@@ -820,7 +849,7 @@ async def activate_promo_code(
         
         logger.info(f"Пользователь {user_id} активировал промокод {promo_code} на {points} баллов")
         
-        return {
+        response = {
             "success": True,
             "points": points,
             "new_balance": user_data['points'],
@@ -828,6 +857,11 @@ async def activate_promo_code(
             "description": promo_data.get('description', ''),
             "message": f"Промокод активирован! +{points} баллов"
         }
+        
+        if demo_mode:
+            response["demo_mode"] = True
+        
+        return response
         
     except HTTPException:
         raise
@@ -843,6 +877,7 @@ async def withdraw_item(
     """Запрос на вывод предмета"""
     try:
         user_info = auth_data['user']
+        demo_mode = auth_data.get('demo_mode', False)
         user_id = user_info.get('id')
         item_index = data.item_index
         item_id = data.item_id
@@ -850,7 +885,7 @@ async def withdraw_item(
         if item_index is None and item_id is None:
             raise HTTPException(status_code=400, detail="Не указан предмет")
         
-        logger.info(f"Пользователь {user_id} выводит предмет: index={item_index}, id={item_id}")
+        logger.info(f"Пользователь {user_id} выводит предмет: index={item_index}, id={item_id} (demo: {demo_mode})")
         
         # Загружаем данные
         users = load_users()
@@ -919,7 +954,7 @@ async def withdraw_item(
         users[user_key] = user_data
         save_users(users)
         
-        return {
+        response = {
             "success": True,
             "message": "Запрос отправлен администратору",
             "item": item['name'],
@@ -928,6 +963,12 @@ async def withdraw_item(
             "admin_notified": True,
             "notification_id": str(int(time.time() * 1000))
         }
+        
+        if demo_mode:
+            response["demo_mode"] = True
+            response["message"] = "Демо: запрос на вывод отправлен (в реальном режиме администратор получил бы уведомление)"
+        
+        return response
         
     except HTTPException:
         raise
@@ -943,13 +984,14 @@ async def set_trade_link(
     """Установка трейд ссылки"""
     try:
         user_info = auth_data['user']
+        demo_mode = auth_data.get('demo_mode', False)
         user_id = user_info.get('id')
         trade_link = data.trade_link.strip()
         
         if not trade_link:
             raise HTTPException(status_code=400, detail="Не указана трейд ссылка")
         
-        logger.info(f"Пользователь {user_id} устанавливает трейд ссылку")
+        logger.info(f"Пользователь {user_id} устанавливает трейд ссылку (demo: {demo_mode})")
         
         # Простая валидация ссылки
         if not ("steamcommunity.com/tradeoffer/new/" in trade_link or 
@@ -976,12 +1018,17 @@ async def set_trade_link(
         
         logger.info(f"Пользователь {user_id} сохранил трейд ссылку")
         
-        return {
+        response = {
             "success": True,
             "message": "Трейд ссылка сохранена",
             "trade_link": trade_link,
             "validated": True
         }
+        
+        if demo_mode:
+            response["demo_mode"] = True
+        
+        return response
         
     except HTTPException:
         raise
@@ -1121,9 +1168,10 @@ async def get_earn_stats(auth_data: Dict[str, Any] = Depends(verify_telegram_aut
     """Получение статистики заработка"""
     try:
         user_info = auth_data['user']
+        demo_mode = auth_data.get('demo_mode', False)
         user_id = user_info.get('id')
         
-        logger.info(f"Получение статистики заработка для пользователя: {user_id}")
+        logger.info(f"Получение статистики заработка для пользователя: {user_id} (demo: {demo_mode})")
         
         users = load_users()
         user_key = str(user_id)
@@ -1151,7 +1199,7 @@ async def get_earn_stats(auth_data: Dict[str, Any] = Depends(verify_telegram_aut
         if user_data.get('steam_profile_status', {}).get('verified'):
             daily_estimate += STEAM_PROFILE_SYSTEM["rewards"]["weekly_reward"] / 7
         
-        return {
+        response = {
             "success": True,
             "stats": {
                 "total_earned": user_data.get('stats', {}).get('total_earned', 0),
@@ -1172,6 +1220,11 @@ async def get_earn_stats(auth_data: Dict[str, Any] = Depends(verify_telegram_aut
             "steam_status": user_data.get('steam_profile_status', {})
         }
         
+        if demo_mode:
+            response["demo_mode"] = True
+        
+        return response
+        
     except HTTPException:
         raise
     except Exception as e:
@@ -1186,9 +1239,10 @@ async def check_telegram_profile(
     """Проверка Telegram профиля"""
     try:
         user_info = auth_data['user']
+        demo_mode = auth_data.get('demo_mode', False)
         user_id = user_info.get('id')
         
-        logger.info(f"Проверка Telegram профиля для пользователя: {user_id}")
+        logger.info(f"Проверка Telegram профиля для пользователя: {user_id} (demo: {demo_mode})")
         
         users = load_users()
         user_key = str(user_id)
@@ -1199,22 +1253,28 @@ async def check_telegram_profile(
         user_data = users[user_key]
         profile_status = user_data.get('telegram_profile_status', {})
         
-        # В реальном приложении здесь была бы проверка через Telegram API
-        # Для демо симулируем проверку
-        last_name = data.last_name or user_info.get('last_name', '')
-        bio = data.bio or ''
-        
-        # Проверяем наличие бота в профиле
-        bot_names = TELEGRAM_PROFILE_SYSTEM["requirements"]["alternative_names"] + \
-                   [TELEGRAM_PROFILE_SYSTEM["requirements"]["bot_username"]]
-        
-        last_name_ok = any(bot_name.lower() in last_name.lower() for bot_name in bot_names)
-        bio_ok = any(bot_name.lower() in bio.lower() for bot_name in bot_names)
-        
-        if TELEGRAM_PROFILE_SYSTEM["requirements"]["both_fields_required"]:
-            verified = last_name_ok and bio_ok
+        if demo_mode:
+            # В демо-режиме симулируем проверку
+            last_name_ok = True
+            bio_ok = True
+            verified = True
         else:
-            verified = last_name_ok or bio_ok
+            # В реальном приложении здесь была бы проверка через Telegram API
+            # Для демо симулируем проверку
+            last_name = data.last_name or user_info.get('last_name', '')
+            bio = data.bio or ''
+            
+            # Проверяем наличие бота в профиле
+            bot_names = TELEGRAM_PROFILE_SYSTEM["requirements"]["alternative_names"] + \
+                       [TELEGRAM_PROFILE_SYSTEM["requirements"]["bot_username"]]
+            
+            last_name_ok = any(bot_name.lower() in last_name.lower() for bot_name in bot_names)
+            bio_ok = any(bot_name.lower() in bio.lower() for bot_name in bot_names)
+            
+            if TELEGRAM_PROFILE_SYSTEM["requirements"]["both_fields_required"]:
+                verified = last_name_ok and bio_ok
+            else:
+                verified = last_name_ok or bio_ok
         
         # Обновляем статус
         was_verified = profile_status.get('verified', False)
@@ -1246,7 +1306,7 @@ async def check_telegram_profile(
         users[user_key] = user_data
         save_users(users)
         
-        return {
+        response = {
             "success": True,
             "verified": verified,
             "last_name_ok": last_name_ok,
@@ -1258,6 +1318,11 @@ async def check_telegram_profile(
             "next_check": profile_status.get('next_reward_date'),
             "message": "Telegram профиль проверен" if verified else "Добавьте бота в профиль Telegram"
         }
+        
+        if demo_mode:
+            response["demo_mode"] = True
+        
+        return response
         
     except HTTPException:
         raise
@@ -1273,13 +1338,14 @@ async def check_steam_profile(
     """Проверка Steam профиля"""
     try:
         user_info = auth_data['user']
+        demo_mode = auth_data.get('demo_mode', False)
         user_id = user_info.get('id')
         steam_url = data.steam_url
         
         if not steam_url:
             raise HTTPException(status_code=400, detail="Не указана ссылка на Steam профиль")
         
-        logger.info(f"Проверка Steam профиля для пользователя: {user_id}")
+        logger.info(f"Проверка Steam профиля для пользователя: {user_id} (demo: {demo_mode})")
         
         users = load_users()
         user_key = str(user_id)
@@ -1290,12 +1356,15 @@ async def check_steam_profile(
         user_data = users[user_key]
         profile_status = user_data.get('steam_profile_status', {})
         
-        # В демо-режиме симулируем проверку
-        # В реальном приложении здесь был бы запрос к Steam API
-        
-        # Симулируем успешную проверку
-        verified = True
-        steam_level = 10  # Демо уровень
+        if demo_mode:
+            # В демо-режиме симулируем проверку
+            verified = True
+            steam_level = 10  # Демо уровень
+        else:
+            # В реальном приложении здесь был бы запрос к Steam API
+            # Симулируем успешную проверку
+            verified = True
+            steam_level = 10  # Демо уровень
         
         # Обновляем статус
         was_verified = profile_status.get('verified', False)
@@ -1330,7 +1399,7 @@ async def check_steam_profile(
         users[user_key] = user_data
         save_users(users)
         
-        return {
+        response = {
             "success": True,
             "verified": verified,
             "level": steam_level,
@@ -1344,6 +1413,11 @@ async def check_steam_profile(
             "next_reward_date": profile_status.get('next_reward_date'),
             "message": "Steam профиль проверен"
         }
+        
+        if demo_mode:
+            response["demo_mode"] = True
+        
+        return response
         
     except HTTPException:
         raise
@@ -1359,9 +1433,10 @@ async def invite_friend(
     """Приглашение друга"""
     try:
         user_info = auth_data['user']
+        demo_mode = auth_data.get('demo_mode', False)
         user_id = user_info.get('id')
         
-        logger.info(f"Пользователь {user_id} приглашает друга")
+        logger.info(f"Пользователь {user_id} приглашает друга (demo: {demo_mode})")
         
         users = load_users()
         user_key = str(user_id)
@@ -1422,7 +1497,7 @@ async def invite_friend(
         users[user_key] = user_data
         save_users(users)
         
-        return {
+        response = {
             "success": True,
             "base_reward": base_reward,
             "milestone_bonus": milestone_bonus,
@@ -1436,6 +1511,11 @@ async def invite_friend(
                       (f" + бонус {milestone_bonus} баллов за достижение!" if milestone_bonus > 0 else "")
         }
         
+        if demo_mode:
+            response["demo_mode"] = True
+        
+        return response
+        
     except HTTPException:
         raise
     except Exception as e:
@@ -1447,9 +1527,10 @@ async def get_referral_info(auth_data: Dict[str, Any] = Depends(verify_telegram_
     """Получение информации о реферальной системе"""
     try:
         user_info = auth_data['user']
+        demo_mode = auth_data.get('demo_mode', False)
         user_id = user_info.get('id')
         
-        logger.info(f"Получение реферальной информации для пользователя: {user_id}")
+        logger.info(f"Получение реферальной информации для пользователя: {user_id} (demo: {demo_mode})")
         
         users = load_users()
         user_key = str(user_id)
@@ -1480,7 +1561,7 @@ async def get_referral_info(auth_data: Dict[str, Any] = Depends(verify_telegram_
         referral_code = user_data.get('referral_code', f"ref_{user_id}")
         referral_link = f"https://t.me/MeteoHinfoBot?start={referral_code}"
         
-        return {
+        response = {
             "success": True,
             "referral_code": referral_code,
             "referral_link": referral_link,
@@ -1497,6 +1578,11 @@ async def get_referral_info(auth_data: Dict[str, Any] = Depends(verify_telegram_
             },
             "all_milestones": REFERRAL_SYSTEM["milestones"]
         }
+        
+        if demo_mode:
+            response["demo_mode"] = True
+        
+        return response
         
     except HTTPException:
         raise
@@ -1573,6 +1659,7 @@ async def startup_event():
     logger.info(f"   📁 Директория данных: {DATA_DIR}")
     logger.info(f"   🤖 Токен бота: {TOKEN[:8]}...{TOKEN[-4:] if len(TOKEN) > 12 else ''}")
     logger.info(f"   🔧 Админы: {ADMIN_IDS}")
+    logger.info(f"   🔧 Режим отладки: {os.environ.get('DEBUG_MODE', 'True')}")
 
 # Точка входа для WSGI
 if __name__ == "__main__":
