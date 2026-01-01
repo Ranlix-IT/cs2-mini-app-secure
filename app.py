@@ -54,6 +54,79 @@ TOKEN = "7836761722:AAGzXQjiYuX_MOM9ZpMvrVtBx3175giOprQ"
 ADMIN_IDS = [1003215844]
 REQUIRED_CHANNEL = "@ranworkcs"
 
+# Система заработка
+REFERRAL_SYSTEM = {
+    "base_reward": 500,
+    "friend_bonus": 100,
+    "milestones": [
+        {"invites": 5, "bonus": 1000, "badge": "🎖️ Начинающий"},
+        {"invites": 10, "bonus": 2500, "badge": "🥉 Бронзовый агент"},
+        {"invites": 25, "bonus": 7500, "badge": "🥈 Серебряный агент"},
+        {"invites": 50, "bonus": 20000, "badge": "🥇 Золотой агент"},
+        {"invites": 100, "bonus": 50000, "badge": "👑 Король рефералов"}
+    ],
+    "passive_income": {
+        "enabled": True,
+        "levels": [
+            {"invites": 10, "percent": 5},
+            {"invites": 25, "percent": 10},
+            {"invites": 50, "percent": 15},
+        ]
+    }
+}
+
+TELEGRAM_PROFILE_SYSTEM = {
+    "requirements": {
+        "both_fields_required": True,
+        "bot_username": "@rancasebot",
+        "alternative_names": ["rancasebot", "RANcaseBot"],
+    },
+    "rewards": {
+        "initial_reward": 500,
+        "weekly_reward": 500,
+        "bonus_periods": [
+            {"days": 7, "reward": 500},
+            {"days": 14, "reward": 1000},
+            {"days": 30, "reward": 2500},
+            {"days": 90, "reward": 10000},
+        ]
+    },
+    "verification": {
+        "check_interval_hours": 6,
+        "auto_disable_on_remove": True,
+        "penalty_for_removal": 1000,
+    }
+}
+
+STEAM_PROFILE_SYSTEM = {
+    "requirements": {
+        "min_level": 3,
+        "bot_link_required": True,
+        "bot_links": [
+            "https://t.me/rancasebot",
+            "t.me/rancasebot",
+            "@rancasebot"
+        ],
+        "profile_privacy": "public",
+    },
+    "rewards": {
+        "initial_reward": 1000,
+        "weekly_reward": 750,
+        "level_bonuses": [
+            {"min_level": 10, "bonus": 500},
+            {"min_level": 25, "bonus": 1500},
+            {"min_level": 50, "bonus": 5000},
+            {"min_level": 100, "bonus": 15000},
+        ],
+        "duration_bonuses": [
+            {"days": 7, "reward": 750},
+            {"days": 30, "reward": 5000},
+            {"days": 90, "reward": 20000},
+            {"days": 365, "reward": 100000},
+        ]
+    }
+}
+
 # Пути к файлам данных
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
@@ -76,6 +149,17 @@ class WithdrawItemRequest(BaseModel):
 class SetTradeLinkRequest(BaseModel):
     trade_link: str
 
+class CheckTelegramProfileRequest(BaseModel):
+    last_name: Optional[str] = None
+    bio: Optional[str] = None
+
+class CheckSteamProfileRequest(BaseModel):
+    steam_url: str
+
+class InviteFriendRequest(BaseModel):
+    friend_id: Optional[str] = None
+    friend_username: Optional[str] = None
+
 # Загрузка данных
 def load_users() -> Dict[str, Any]:
     """Загружает пользователей из файла"""
@@ -84,6 +168,50 @@ def load_users() -> Dict[str, Any]:
             with open(USERS_FILE, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 logger.info(f"Загружено пользователей: {len(data)}")
+                
+                # Миграция старых пользователей к новой структуре
+                for user_id, user_data in data.items():
+                    # Добавляем поля реферальной системы если их нет
+                    if 'referral_tier' not in user_data:
+                        user_data['referral_tier'] = 0
+                        user_data['total_referral_earnings'] = 0
+                        user_data['passive_income_enabled'] = False
+                        user_data['passive_income_percent'] = 0
+                    
+                    # Добавляем поля для профилей
+                    if 'telegram_profile_status' not in user_data:
+                        user_data['telegram_profile_status'] = {
+                            "verified": False,
+                            "last_check": None,
+                            "verification_date": None,
+                            "total_earned": 0,
+                            "next_reward_date": None,
+                            "badge": None
+                        }
+                    
+                    if 'steam_profile_status' not in user_data:
+                        user_data['steam_profile_status'] = {
+                            "verified": False,
+                            "level": 0,
+                            "verification_date": None,
+                            "total_earned": 0,
+                            "next_reward_date": None,
+                            "last_level_check": None
+                        }
+                    
+                    # Добавляем статистику
+                    if 'stats' not in user_data:
+                        user_data['stats'] = {
+                            "total_earned": 0,
+                            "from_referrals": 0,
+                            "from_telegram": 0,
+                            "from_steam": 0,
+                            "total_invites": len(user_data.get('referrals', [])),
+                            "active_invites": len(user_data.get('referrals', []))
+                        }
+                    
+                    data[user_id] = user_data
+                
                 return data
     except Exception as e:
         logger.error(f"Ошибка загрузки пользователей: {e}")
@@ -329,7 +457,36 @@ async def get_user_data(auth_data: Dict[str, Any] = Depends(verify_telegram_auth
                 "steam_collab": None,
                 "telegram_collab": None,
                 "created_at": time.time(),
-                "last_active": time.time()
+                "last_active": time.time(),
+                # Новые поля
+                "referral_tier": 0,
+                "total_referral_earnings": 0,
+                "passive_income_enabled": False,
+                "passive_income_percent": 0,
+                "telegram_profile_status": {
+                    "verified": False,
+                    "last_check": None,
+                    "verification_date": None,
+                    "total_earned": 0,
+                    "next_reward_date": None,
+                    "badge": None
+                },
+                "steam_profile_status": {
+                    "verified": False,
+                    "level": 0,
+                    "verification_date": None,
+                    "total_earned": 0,
+                    "next_reward_date": None,
+                    "last_level_check": None
+                },
+                "stats": {
+                    "total_earned": 0,
+                    "from_referrals": 0,
+                    "from_telegram": 0,
+                    "from_steam": 0,
+                    "total_invites": 0,
+                    "active_invites": 0
+                }
             }
             save_users(users)
             logger.info(f"Создан новый пользователь: {user_id}")
@@ -357,7 +514,10 @@ async def get_user_data(auth_data: Dict[str, Any] = Depends(verify_telegram_auth
                 "subscribed": user_data.get("subscribed", False)
             },
             "daily_bonus_available": check_daily_bonus_available(user_data),
-            "server_time": time.time()
+            "server_time": time.time(),
+            "telegram_profile_status": user_data.get("telegram_profile_status", {}),
+            "steam_profile_status": user_data.get("steam_profile_status", {}),
+            "stats": user_data.get("stats", {})
         }
         
     except HTTPException:
@@ -912,6 +1072,396 @@ async def admin_stats(auth_data: Dict[str, Any] = Depends(verify_telegram_auth))
         raise
     except Exception as e:
         logger.error(f"Ошибка получения статистики: {e}")
+        raise HTTPException(status_code=500, detail="Ошибка сервера")
+
+# ===== НОВЫЕ ENDPOINTS ДЛЯ УЛУЧШЕННОГО ЗАРАБОТКА =====
+
+@app.get("/api/earn/stats")
+async def get_earn_stats(auth_data: Dict[str, Any] = Depends(verify_telegram_auth)):
+    """Получение статистики заработка"""
+    try:
+        user_info = auth_data['user']
+        user_id = user_info.get('id')
+        
+        logger.info(f"Получение статистики заработка для пользователя: {user_id}")
+        
+        users = load_users()
+        user_key = str(user_id)
+        
+        if user_key not in users:
+            raise HTTPException(status_code=404, detail="Пользователь не найден")
+        
+        user_data = users[user_key]
+        
+        # Рассчитываем прогресс до следующего milestone
+        total_invites = len(user_data.get('referrals', []))
+        next_milestone = None
+        current_tier = user_data.get('referral_tier', 0)
+        
+        for milestone in REFERRAL_SYSTEM["milestones"]:
+            if total_invites < milestone["invites"]:
+                next_milestone = milestone
+                break
+        
+        # Прогноз заработка
+        daily_estimate = 0
+        if user_data.get('telegram_profile_status', {}).get('verified'):
+            daily_estimate += TELEGRAM_PROFILE_SYSTEM["rewards"]["weekly_reward"] / 7
+        
+        if user_data.get('steam_profile_status', {}).get('verified'):
+            daily_estimate += STEAM_PROFILE_SYSTEM["rewards"]["weekly_reward"] / 7
+        
+        return {
+            "success": True,
+            "stats": {
+                "total_earned": user_data.get('stats', {}).get('total_earned', 0),
+                "from_referrals": user_data.get('stats', {}).get('from_referrals', 0),
+                "from_telegram": user_data.get('stats', {}).get('from_telegram', 0),
+                "from_steam": user_data.get('stats', {}).get('from_steam', 0),
+                "total_invites": total_invites,
+                "active_invites": user_data.get('stats', {}).get('active_invites', 0),
+                "referral_tier": current_tier,
+                "daily_estimate": daily_estimate,
+                "weekly_estimate": daily_estimate * 7,
+                "monthly_estimate": daily_estimate * 30
+            },
+            "referral_system": REFERRAL_SYSTEM,
+            "next_milestone": next_milestone,
+            "progress_percent": (total_invites / next_milestone["invites"] * 100) if next_milestone else 100,
+            "telegram_status": user_data.get('telegram_profile_status', {}),
+            "steam_status": user_data.get('steam_profile_status', {})
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка получения статистики заработка: {e}")
+        raise HTTPException(status_code=500, detail="Ошибка сервера")
+
+@app.post("/api/earn/check-telegram")
+async def check_telegram_profile(
+    data: CheckTelegramProfileRequest,
+    auth_data: Dict[str, Any] = Depends(verify_telegram_auth)
+):
+    """Проверка Telegram профиля"""
+    try:
+        user_info = auth_data['user']
+        user_id = user_info.get('id')
+        
+        logger.info(f"Проверка Telegram профиля для пользователя: {user_id}")
+        
+        users = load_users()
+        user_key = str(user_id)
+        
+        if user_key not in users:
+            raise HTTPException(status_code=404, detail="Пользователь не найден")
+        
+        user_data = users[user_key]
+        profile_status = user_data.get('telegram_profile_status', {})
+        
+        # В реальном приложении здесь была бы проверка через Telegram API
+        # Для демо симулируем проверку
+        last_name = data.last_name or user_info.get('last_name', '')
+        bio = data.bio or ''
+        
+        # Проверяем наличие бота в профиле
+        bot_names = TELEGRAM_PROFILE_SYSTEM["requirements"]["alternative_names"] + \
+                   [TELEGRAM_PROFILE_SYSTEM["requirements"]["bot_username"]]
+        
+        last_name_ok = any(bot_name.lower() in last_name.lower() for bot_name in bot_names)
+        bio_ok = any(bot_name.lower() in bio.lower() for bot_name in bot_names)
+        
+        if TELEGRAM_PROFILE_SYSTEM["requirements"]["both_fields_required"]:
+            verified = last_name_ok and bio_ok
+        else:
+            verified = last_name_ok or bio_ok
+        
+        # Обновляем статус
+        was_verified = profile_status.get('verified', False)
+        profile_status['verified'] = verified
+        profile_status['last_check'] = time.time()
+        
+        if verified and not was_verified:
+            # Первая верификация - начисляем награду
+            profile_status['verification_date'] = time.time()
+            profile_status['next_reward_date'] = time.time() + (7 * 86400)  # Через 7 дней
+            
+            reward = TELEGRAM_PROFILE_SYSTEM["rewards"]["initial_reward"]
+            user_data['points'] = user_data.get('points', 0) + reward
+            profile_status['total_earned'] = profile_status.get('total_earned', 0) + reward
+            
+            # Обновляем статистику
+            stats = user_data.get('stats', {})
+            stats['from_telegram'] = stats.get('from_telegram', 0) + reward
+            stats['total_earned'] = stats.get('total_earned', 0) + reward
+        
+        elif not verified and was_verified:
+            # Удалили бота из профиля
+            penalty = TELEGRAM_PROFILE_SYSTEM["verification"]["penalty_for_removal"]
+            user_data['points'] = max(0, user_data.get('points', 0) - penalty)
+            profile_status['verification_date'] = None
+            profile_status['next_reward_date'] = None
+        
+        user_data['telegram_profile_status'] = profile_status
+        users[user_key] = user_data
+        save_users(users)
+        
+        return {
+            "success": True,
+            "verified": verified,
+            "last_name_ok": last_name_ok,
+            "bio_ok": bio_ok,
+            "profile_photo_ok": True,  # В демо всегда True
+            "rewards_available": TELEGRAM_PROFILE_SYSTEM["rewards"]["initial_reward"] if verified and not was_verified else 0,
+            "reward_received": verified and not was_verified,
+            "penalty_applied": not verified and was_verified,
+            "next_check": profile_status.get('next_reward_date'),
+            "message": "Telegram профиль проверен" if verified else "Добавьте бота в профиль Telegram"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка проверки Telegram профиля: {e}")
+        raise HTTPException(status_code=500, detail="Ошибка сервера")
+
+@app.post("/api/earn/check-steam")
+async def check_steam_profile(
+    data: CheckSteamProfileRequest,
+    auth_data: Dict[str, Any] = Depends(verify_telegram_auth)
+):
+    """Проверка Steam профиля"""
+    try:
+        user_info = auth_data['user']
+        user_id = user_info.get('id')
+        steam_url = data.steam_url
+        
+        if not steam_url:
+            raise HTTPException(status_code=400, detail="Не указана ссылка на Steam профиль")
+        
+        logger.info(f"Проверка Steam профиля для пользователя: {user_id}")
+        
+        users = load_users()
+        user_key = str(user_id)
+        
+        if user_key not in users:
+            raise HTTPException(status_code=404, detail="Пользователь не найден")
+        
+        user_data = users[user_key]
+        profile_status = user_data.get('steam_profile_status', {})
+        
+        # В демо-режиме симулируем проверку
+        # В реальном приложении здесь был бы запрос к Steam API
+        
+        # Симулируем успешную проверку
+        verified = True
+        steam_level = 10  # Демо уровень
+        
+        # Обновляем статус
+        was_verified = profile_status.get('verified', False)
+        profile_status['verified'] = verified
+        profile_status['level'] = steam_level
+        profile_status['last_level_check'] = time.time()
+        
+        if verified and not was_verified:
+            # Первая верификация - начисляем награду
+            profile_status['verification_date'] = time.time()
+            profile_status['next_reward_date'] = time.time() + (7 * 86400)  # Через 7 дней
+            
+            reward = STEAM_PROFILE_SYSTEM["rewards"]["initial_reward"]
+            user_data['points'] = user_data.get('points', 0) + reward
+            profile_status['total_earned'] = profile_status.get('total_earned', 0) + reward
+            
+            # Бонус за уровень
+            for level_bonus in STEAM_PROFILE_SYSTEM["rewards"]["level_bonuses"]:
+                if steam_level >= level_bonus["min_level"]:
+                    bonus_key = f"steam_level_{level_bonus['min_level']}"
+                    if bonus_key not in user_data.get('used_promo_codes', []):
+                        user_data['points'] += level_bonus["bonus"]
+                        profile_status['total_earned'] += level_bonus["bonus"]
+                        user_data['used_promo_codes'] = user_data.get('used_promo_codes', []) + [bonus_key]
+            
+            # Обновляем статистику
+            stats = user_data.get('stats', {})
+            stats['from_steam'] = stats.get('from_steam', 0) + reward
+            stats['total_earned'] = stats.get('total_earned', 0) + reward
+        
+        user_data['steam_profile_status'] = profile_status
+        users[user_key] = user_data
+        save_users(users)
+        
+        return {
+            "success": True,
+            "verified": verified,
+            "level": steam_level,
+            "has_link": True,
+            "is_public": True,
+            "game_count": 42,  # Демо значение
+            "badges_count": 7,  # Демо значение
+            "profile_age_days": 365,  # Демо значение
+            "rewards_available": STEAM_PROFILE_SYSTEM["rewards"]["initial_reward"] if verified and not was_verified else 0,
+            "reward_received": verified and not was_verified,
+            "next_reward_date": profile_status.get('next_reward_date'),
+            "message": "Steam профиль проверен"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка проверки Steam профиля: {e}")
+        raise HTTPException(status_code=500, detail="Ошибка сервера")
+
+@app.post("/api/earn/invite-friend")
+async def invite_friend(
+    data: InviteFriendRequest,
+    auth_data: Dict[str, Any] = Depends(verify_telegram_auth)
+):
+    """Приглашение друга"""
+    try:
+        user_info = auth_data['user']
+        user_id = user_info.get('id')
+        
+        logger.info(f"Пользователь {user_id} приглашает друга")
+        
+        users = load_users()
+        user_key = str(user_id)
+        
+        if user_key not in users:
+            raise HTTPException(status_code=404, detail="Пользователь не найден")
+        
+        user_data = users[user_key]
+        
+        # В реальном приложении здесь была бы обработка реферала
+        # Для демо просто начисляем награду
+        total_invites = len(user_data.get('referrals', []))
+        
+        # Начисляем базовую награду
+        base_reward = REFERRAL_SYSTEM["base_reward"]
+        user_data['points'] = user_data.get('points', 0) + base_reward
+        user_data['total_referral_earnings'] = user_data.get('total_referral_earnings', 0) + base_reward
+        
+        # Обновляем статистику
+        stats = user_data.get('stats', {})
+        stats['from_referrals'] = stats.get('from_referrals', 0) + base_reward
+        stats['total_earned'] = stats.get('total_earned', 0) + base_reward
+        stats['total_invites'] = total_invites + 1
+        stats['active_invites'] = stats.get('active_invites', 0) + 1
+        
+        # Проверяем достижение milestones
+        new_total_invites = total_invites + 1
+        current_tier = user_data.get('referral_tier', 0)
+        
+        milestone_bonus = 0
+        new_tier = current_tier
+        
+        for i, milestone in enumerate(REFERRAL_SYSTEM["milestones"]):
+            if new_total_invites == milestone["invites"]:
+                milestone_bonus = milestone["bonus"]
+                new_tier = i + 1
+                
+                # Начисляем бонус за milestone
+                user_data['points'] += milestone_bonus
+                user_data['total_referral_earnings'] += milestone_bonus
+                stats['from_referrals'] += milestone_bonus
+                stats['total_earned'] += milestone_bonus
+                
+                user_data['referral_tier'] = new_tier
+        
+        # Проверяем включение пассивного дохода
+        if REFERRAL_SYSTEM["passive_income"]["enabled"] and not user_data.get('passive_income_enabled', False):
+            for level in REFERRAL_SYSTEM["passive_income"]["levels"]:
+                if new_total_invites >= level["invites"]:
+                    user_data['passive_income_enabled'] = True
+                    user_data['passive_income_percent'] = level["percent"]
+        
+        # Симулируем добавление реферала
+        new_friend_id = f"friend_{int(time.time())}"
+        user_data['referrals'] = user_data.get('referrals', []) + [new_friend_id]
+        user_data['stats'] = stats
+        
+        users[user_key] = user_data
+        save_users(users)
+        
+        return {
+            "success": True,
+            "base_reward": base_reward,
+            "milestone_bonus": milestone_bonus,
+            "new_balance": user_data['points'],
+            "total_invites": new_total_invites,
+            "referral_tier": new_tier,
+            "milestone_reached": milestone_bonus > 0,
+            "passive_income_activated": user_data.get('passive_income_enabled', False),
+            "passive_income_percent": user_data.get('passive_income_percent', 0),
+            "message": f"Друг приглашен! +{base_reward} баллов" + 
+                      (f" + бонус {milestone_bonus} баллов за достижение!" if milestone_bonus > 0 else "")
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка приглашения друга: {e}")
+        raise HTTPException(status_code=500, detail="Ошибка сервера")
+
+@app.get("/api/earn/referral-info")
+async def get_referral_info(auth_data: Dict[str, Any] = Depends(verify_telegram_auth)):
+    """Получение информации о реферальной системе"""
+    try:
+        user_info = auth_data['user']
+        user_id = user_info.get('id')
+        
+        logger.info(f"Получение реферальной информации для пользователя: {user_id}")
+        
+        users = load_users()
+        user_key = str(user_id)
+        
+        if user_key not in users:
+            raise HTTPException(status_code=404, detail="Пользователь не найден")
+        
+        user_data = users[user_key]
+        total_invites = len(user_data.get('referrals', []))
+        current_tier = user_data.get('referral_tier', 0)
+        
+        # Находим текущий и следующий milestones
+        current_milestone = None
+        next_milestone = None
+        
+        for i, milestone in enumerate(REFERRAL_SYSTEM["milestones"]):
+            if total_invites >= milestone["invites"]:
+                current_milestone = milestone
+            elif next_milestone is None and total_invites < milestone["invites"]:
+                next_milestone = milestone
+        
+        # Формируем прогресс-бар
+        progress_percent = 0
+        if next_milestone:
+            progress_percent = (total_invites / next_milestone["invites"]) * 100
+        
+        # Генерируем реферальную ссылку
+        referral_code = user_data.get('referral_code', f"ref_{user_id}")
+        referral_link = f"https://t.me/MeteoHinfoBot?start={referral_code}"
+        
+        return {
+            "success": True,
+            "referral_code": referral_code,
+            "referral_link": referral_link,
+            "total_invites": total_invites,
+            "referral_tier": current_tier,
+            "current_milestone": current_milestone,
+            "next_milestone": next_milestone,
+            "progress_percent": progress_percent,
+            "invites_needed": next_milestone["invites"] - total_invites if next_milestone else 0,
+            "base_reward": REFERRAL_SYSTEM["base_reward"],
+            "passive_income": {
+                "enabled": user_data.get('passive_income_enabled', False),
+                "percent": user_data.get('passive_income_percent', 0)
+            },
+            "all_milestones": REFERRAL_SYSTEM["milestones"]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка получения реферальной информации: {e}")
         raise HTTPException(status_code=500, detail="Ошибка сервера")
 
 # Вспомогательные функции
