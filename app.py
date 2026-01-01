@@ -408,6 +408,46 @@ async def serve_index():
 async def favicon():
     return FileResponse(BASE_DIR / "favicon.ico" if (BASE_DIR / "favicon.ico").exists() else BASE_DIR / "icon.png")
 
+@app.get("/manifest.json")
+async def serve_manifest():
+    """Отдача манифеста PWA"""
+    manifest = {
+        "name": "CS2 Skin Bot",
+        "short_name": "CS2 Bot",
+        "description": "Открывай кейсы, зарабатывай баллы, получай скины CS2 бесплатно",
+        "start_url": "/",
+        "display": "standalone",
+        "theme_color": "#667eea",
+        "background_color": "#1a202c",
+        "orientation": "portrait",
+        "scope": "/",
+        "lang": "ru",
+        "categories": ["games", "entertainment"],
+        "icons": [
+            {
+                "src": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgdmlld0JveD0iMCAwIDUxMiA1MTIiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSI1MTIiIGhlaWdodD0iNTEyIiByeD0iMTI4IiBmaWxsPSIjNjY3RWVhIi8+CjxjaXJjbGUgY3g9IjI1NiIgY3k9IjI1NiIgcj0iMTIwIiBmaWxsPSIjNzY0QmEyIi8+Cjx0ZXh0IHg9IjI1NiIgeT0iMjU2IiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iODAiIGZpbGw9IndoaXRlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+Q1MyPC90ZXh0Pgo8L3N2Zz4K",
+                "sizes": "512x512",
+                "type": "image/svg+xml",
+                "purpose": "any"
+            }
+        ],
+        "shortcuts": [
+            {
+                "name": "Открыть кейс",
+                "short_name": "Кейсы",
+                "description": "Быстрый доступ к открытию кейсов",
+                "url": "/?section=cases"
+            },
+            {
+                "name": "Инвентарь",
+                "short_name": "Инвентарь",
+                "description": "Просмотр ваших предметов",
+                "url": "/?section=inventory"
+            }
+        ]
+    }
+    return JSONResponse(content=manifest)
+
 @app.get("/api/health")
 async def health_check():
     """Проверка здоровья API"""
