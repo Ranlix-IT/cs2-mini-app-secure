@@ -1,7 +1,8 @@
 # app.py - CS2 Bot API Server
 from fastapi import FastAPI, HTTPException, Depends, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, Response
+from fastapi.staticfiles import StaticFiles  # Добавляем поддержку статических файлов
 import json
 import logging
 import asyncio
@@ -26,6 +27,10 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc"
 )
+
+# Подключаем статические файлы
+BASE_DIR = Path(__file__).resolve().parent
+app.mount("/static", StaticFiles(directory=str(BASE_DIR)), name="static")
 
 # Настройка CORS для Telegram Mini Apps
 app.add_middleware(
@@ -117,7 +122,6 @@ STEAM_PROFILE_SYSTEM = {
 }
 
 # Пути к файлам данных
-BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
 
@@ -351,7 +355,7 @@ async def verify_telegram_auth(
         if not authorization:
             logger.warning("Отсутствует заголовок Authorization")
             # Для тестирования разрешаем без авторизации некоторые endpoints
-            if request.url.path in ["/api/health", "/api/available-promos", "/api/test", "/"]:
+            if request.url.path in ["/api/health", "/api/available-promos", "/api/test", "/", "/script.js", "/style.css"]:
                 return {
                     'user': {'id': 1003215844, 'first_name': 'Test', 'username': 'test'}, 
                     'valid': True,
@@ -418,7 +422,13 @@ async def serve_index():
 
 @app.get("/favicon.ico")
 async def favicon():
-    return FileResponse(BASE_DIR / "favicon.ico" if (BASE_DIR / "favicon.ico").exists() else BASE_DIR / "icon.png")
+    favicon_path = BASE_DIR / "favicon.ico"
+    if favicon_path.exists():
+        return FileResponse(favicon_path)
+    icon_path = BASE_DIR / "icon.png"
+    if icon_path.exists():
+        return FileResponse(icon_path)
+    return Response(status_code=404)
 
 @app.get("/manifest.json")
 async def serve_manifest():
@@ -426,9 +436,7 @@ async def serve_manifest():
     try:
         manifest_path = BASE_DIR / "manifest.json"
         if manifest_path.exists():
-            with open(manifest_path, 'r', encoding='utf-8') as f:
-                manifest_data = json.load(f)
-            return JSONResponse(content=manifest_data)
+            return FileResponse(manifest_path, media_type="application/json")
     except Exception as e:
         logger.error(f"Ошибка загрузки манифеста: {e}")
     
@@ -455,6 +463,51 @@ async def serve_manifest():
         ]
     }
     return JSONResponse(content=manifest)
+
+@app.get("/script.js")
+async def serve_script():
+    """Отдача JavaScript файла"""
+    try:
+        script_path = BASE_DIR / "script.js"
+        if script_path.exists():
+            with open(script_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            return Response(content=content, media_type="application/javascript")
+        else:
+            raise HTTPException(status_code=404, detail="script.js not found")
+    except Exception as e:
+        logger.error(f"Ошибка загрузки script.js: {e}")
+        raise HTTPException(status_code=500, detail="Ошибка загрузки скрипта")
+
+@app.get("/style.css")
+async def serve_style():
+    """Отдача CSS файла"""
+    try:
+        style_path = BASE_DIR / "style.css"
+        if style_path.exists():
+            with open(style_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            return Response(content=content, media_type="text/css")
+        else:
+            raise HTTPException(status_code=404, detail="style.css not found")
+    except Exception as e:
+        logger.error(f"Ошибка загрузки style.css: {e}")
+        raise HTTPException(status_code=500, detail="Ошибка загрузки стилей")
+
+@app.get("/service-worker.js")
+async def serve_service_worker():
+    """Отдача Service Worker файла"""
+    try:
+        sw_path = BASE_DIR / "service-worker.js"
+        if sw_path.exists():
+            with open(sw_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            return Response(content=content, media_type="application/javascript")
+        else:
+            raise HTTPException(status_code=404, detail="service-worker.js not found")
+    except Exception as e:
+        logger.error(f"Ошибка загрузки service-worker.js: {e}")
+        raise HTTPException(status_code=500, detail="Ошибка загрузки service worker")
 
 @app.get("/api/health")
 async def health_check():
@@ -1612,13 +1665,13 @@ async def log_requests(request: Request, call_next):
     start_time = time.time()
     
     # Пропускаем health check из логов чтобы не засорять
-    if request.url.path != "/api/health":
+    if request.url.path != "/api/health" and not request.url.path.endswith(('.js', '.css', '.ico')):
         logger.info(f"👉 {request.method} {request.url.path} - Client: {request.client.host if request.client else 'unknown'}")
     
     response = await call_next(request)
     process_time = time.time() - start_time
     
-    if request.url.path != "/api/health":
+    if request.url.path != "/api/health" and not request.url.path.endswith(('.js', '.css', '.ico')):
         logger.info(f"👈 {request.method} {request.url.path} - {response.status_code} - {process_time:.3f}s")
     
     # Добавляем CORS заголовки
