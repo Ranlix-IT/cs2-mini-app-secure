@@ -8,7 +8,7 @@ let appState = {
     referralCode: "",
     tradeLink: "",
     referralsCount: 0,
-    currentSection: null  // ← ДОБАВЛЕНО: отслеживаем текущую секцию
+    currentSection: null
 };
 
 const API_BASE_URL = "https://cs2-mini-app.onrender.com";
@@ -109,9 +109,11 @@ function useTestData() {
     showToast('Демо-режим', 'Используются тестовые данные', 'info');
 }
 
-// ===== ОБРАБОТЧИКИ СОБЫТИЙ (ИСПРАВЛЕНО) =====
+// ===== ОБРАБОТЧИКИ СОБЫТИЙ (ИСПРАВЛЕНО!) =====
 function setupEventListeners() {
     console.log("🔧 Настройка обработчиков событий...");
+    
+    // ===== ОБЩИЕ ОБРАБОТЧИКИ =====
     
     // Кнопка меню
     const menuBtn = document.getElementById('menu-btn');
@@ -142,49 +144,11 @@ function setupEventListeners() {
         });
     });
     
-    // ==== ВАЖНОЕ ИСПРАВЛЕНИЕ: Кнопки открытия кейсов ====
-    // ТОЛЬКО кнопка "Открыть", НЕ вся карточка
-    document.querySelectorAll('.open-case-btn').forEach(btn => {
-        btn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            e.preventDefault();
-            const caseCard = this.closest('.case-card');
-            const price = caseCard?.getAttribute('data-price');
-            if (price) {
-                openCase(parseInt(price));
-            }
-        });
-    });
-    
-    // Клик на карточке кейса (НЕ на кнопке "Открыть")
-    document.querySelectorAll('.case-card').forEach(card => {
-        card.addEventListener('click', function(e) {
-            // Разрешаем клик ТОЛЬКО если НЕ кликнули на кнопку "Открыть"
-            if (!e.target.closest('.open-case-btn') && 
-                !e.target.closest('.case-price')) {
-                const price = this.getAttribute('data-price');
-                if (price) {
-                    openCase(parseInt(price));
-                }
-            }
-        });
-    });
-    
     // Кнопка ежедневного бонуса
     const dailyBonusBtn = document.getElementById('daily-bonus-btn');
     if (dailyBonusBtn) {
         dailyBonusBtn.addEventListener('click', claimDailyBonus);
     }
-    
-    // ==== ВАЖНОЕ ИСПРАВЛЕНИЕ: Кнопки назад в секциях ====
-    document.querySelectorAll('.back-btn').forEach(btn => {
-        btn.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            console.log("🔙 Кнопка НАЗАД нажата");
-            backToMain();
-        });
-    });
     
     // Кнопка закрытия анимации открытия кейса
     const closeCaseBtn = document.getElementById('close-case-btn');
@@ -193,18 +157,6 @@ function setupEventListeners() {
             e.preventDefault();
             e.stopPropagation();
             closeCaseOpening();
-        });
-    }
-    
-    // Также закрытие по клику на overlay (фон) анимации
-    const caseOpening = document.getElementById('case-opening');
-    if (caseOpening) {
-        caseOpening.addEventListener('click', function(e) {
-            if (e.target === this) {
-                e.preventDefault();
-                e.stopPropagation();
-                closeCaseOpening();
-            }
         });
     }
     
@@ -298,10 +250,94 @@ function setupEventListeners() {
         showToast('Скоро!', 'Функция в разработке', 'info');
     });
     
+    // ===== КЕЙСЫ - ОТДЕЛЬНАЯ ЛОГИКА =====
+    
+    // ТОЛЬКО кнопка "Открыть" в кейсах
+    document.querySelectorAll('.open-case-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            const caseCard = this.closest('.case-card');
+            const price = caseCard?.getAttribute('data-price');
+            if (price) {
+                openCase(parseInt(price));
+            }
+        });
+    });
+    
+    // Клик на всей карточке кейса (но НЕ на кнопке "Открыть")
+    document.querySelectorAll('.case-card').forEach(card => {
+        card.addEventListener('click', function(e) {
+            // Разрешаем клик ТОЛЬКО если НЕ кликнули на кнопку "Открыть" или цену
+            if (!e.target.closest('.open-case-btn') && 
+                !e.target.closest('.case-price')) {
+                const price = this.getAttribute('data-price');
+                if (price) {
+                    openCase(parseInt(price));
+                }
+            }
+        });
+    });
+    
+    // ===== ВАЖНОЕ ИСПРАВЛЕНИЕ: КНОПКИ НАЗАД =====
+    
+    // Явные обработчики для каждой кнопки назад (ОБЯЗАТЕЛЬНО!)
+    document.getElementById('cases-back-btn')?.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log("🔙 Назад из Кейсов");
+        backToMain();
+    });
+    
+    document.getElementById('inventory-back-btn')?.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log("🔙 Назад из Инвентаря");
+        backToMain();
+    });
+    
+    document.getElementById('earn-back-btn')?.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log("🔙 Назад из Заработать");
+        backToMain();
+    });
+    
+    document.getElementById('promo-back-btn')?.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log("🔙 Назад из Промокодов");
+        backToMain();
+    });
+    
+    document.getElementById('profile-back-btn')?.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log("🔙 Назад из Профиля");
+        backToMain();
+    });
+    
+    // УДАЛИТЬ старый обработчик для всех .back-btn если он есть
+    // document.querySelectorAll('.back-btn').forEach(btn => {
+    //     btn.removeEventListener('click', backToMain);
+    // });
+    
+    // Также закрытие по клику на overlay (фон) анимации
+    const caseOpening = document.getElementById('case-opening');
+    if (caseOpening) {
+        caseOpening.addEventListener('click', function(e) {
+            if (e.target === this) {
+                e.preventDefault();
+                e.stopPropagation();
+                closeCaseOpening();
+            }
+        });
+    }
+    
     console.log("✅ Обработчики событий установлены");
 }
 
-// ===== НАВИГАЦИЯ (ИСПРАВЛЕНО) =====
+// ===== НАВИГАЦИЯ =====
 function openSection(sectionName) {
     console.log(`📱 Открываем раздел: ${sectionName}`);
     
@@ -342,25 +378,25 @@ function openSection(sectionName) {
 function backToMain() {
     console.log("🔙 Вызов backToMain()");
     
-    // ОБЯЗАТЕЛЬНО сначала закрываем анимацию кейса
+    // 1. Сначала закрываем анимацию кейса если открыта
     closeCaseOpening();
     
-    // Показываем основной контент
+    // 2. Показываем основной контент
     const mainElements = document.querySelectorAll('.main-content > *:not(.page-section)');
     mainElements.forEach(element => {
         element.style.display = 'block';
     });
     
-    // Скрываем все секции
+    // 3. Скрываем все секции
     document.querySelectorAll('.page-section').forEach(section => {
         section.classList.add('hidden');
         section.style.display = 'none';
     });
     
-    // Сбрасываем текущую секцию
+    // 4. Сбрасываем текущую секцию
     appState.currentSection = null;
     
-    // Прокручиваем вверх
+    // 5. Прокручиваем вверх
     window.scrollTo(0, 0);
 }
 
@@ -382,7 +418,7 @@ function toggleMenu(show) {
     }
 }
 
-// ===== API ФУНКЦИИ (оставить как было) =====
+// ===== API ФУНКЦИИ =====
 async function apiRequest(endpoint, method = 'GET', data = null) {
     try {
         const headers = {
@@ -429,7 +465,6 @@ async function apiRequest(endpoint, method = 'GET', data = null) {
     }
 }
 
-// Симуляция API ответов (оставить как было)
 function simulateAPIResponse(endpoint, method, data) {
     console.log(`🎭 Симуляция API ответа для: ${endpoint}`);
     
