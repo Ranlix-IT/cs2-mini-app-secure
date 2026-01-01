@@ -185,13 +185,17 @@ function setupEventListeners() {
     // Кнопка закрытия меню
     const menuCloseBtn = document.getElementById('menu-close-btn');
     if (menuCloseBtn) {
-        menuCloseBtn.addEventListener('click', () => toggleMenu(false));
+        menuCloseBtn.addEventListener('click', function() { 
+            toggleMenu(false); 
+        });
     }
     
     // Overlay для закрытия меню
     const menuOverlay = document.getElementById('menu-overlay');
     if (menuOverlay) {
-        menuOverlay.addEventListener('click', () => toggleMenu(false));
+        menuOverlay.addEventListener('click', function() { 
+            toggleMenu(false); 
+        });
     }
     
     // Кнопки навигации в главном меню
@@ -234,7 +238,9 @@ function setupEventListeners() {
     // Кнопка ежедневного бонуса
     const dailyBonusBtn = document.getElementById('daily-bonus-btn');
     if (dailyBonusBtn) {
-        dailyBonusBtn.addEventListener('click', () => debounce(claimDailyBonus));
+        dailyBonusBtn.addEventListener('click', function() { 
+            debounce(claimDailyBonus); 
+        });
     }
     
     // Кнопки назад в секциях - с дебаунсом
@@ -271,19 +277,25 @@ function setupEventListeners() {
     // Активация промокода
     const promoBtn = document.getElementById('activate-promo-btn');
     if (promoBtn) {
-        promoBtn.addEventListener('click', () => debounce(activatePromoCode));
+        promoBtn.addEventListener('click', function() { 
+            debounce(activatePromoCode); 
+        });
     }
     
     // Сохранение трейд ссылки
     const tradeLinkBtn = document.getElementById('save-trade-link-btn');
     if (tradeLinkBtn) {
-        tradeLinkBtn.addEventListener('click', () => debounce(setTradeLink));
+        tradeLinkBtn.addEventListener('click', function() { 
+            debounce(setTradeLink); 
+        });
     }
     
     // Копирование реферальной ссылки
     const copyRefBtn = document.getElementById('copy-ref-link-btn');
     if (copyRefBtn) {
-        copyRefBtn.addEventListener('click', () => debounce(copyReferralLink));
+        copyRefBtn.addEventListener('click', function() { 
+            debounce(copyReferralLink); 
+        });
     }
     
     // Навигация через меню
@@ -339,9 +351,12 @@ function setupEventListeners() {
     });
     
     // Дополнительные кнопки
-    document.getElementById('withdraw-all-btn')?.addEventListener('click', () => {
-        showToast('Скоро!', 'Функция в разработке', 'info');
-    });
+    const withdrawAllBtn = document.getElementById('withdraw-all-btn');
+    if (withdrawAllBtn) {
+        withdrawAllBtn.addEventListener('click', function() {
+            showToast('Скоро!', 'Функция в разработке', 'info');
+        });
+    }
     
     console.log("✅ Обработчики событий установлены");
 }
@@ -1310,10 +1325,18 @@ function showRewardNotification(title, amount) {
 // Функция инициализации улучшенного заработка
 function initEnhancedEarning() {
     // Обновляем обработчики событий
-    document.getElementById('check-telegram-btn')?.addEventListener('click', () => debounce(checkTelegramProfile));
-    document.getElementById('check-steam-btn')?.addEventListener('click', () => debounce(checkSteamProfile));
-    document.getElementById('invite-friend-btn')?.addEventListener('click', () => debounce(inviteFriend));
-    document.getElementById('copy-referral-link-btn')?.addEventListener('click', () => debounce(copyEnhancedReferralLink));
+    document.getElementById('check-telegram-btn')?.addEventListener('click', function() { 
+        debounce(checkTelegramProfile); 
+    });
+    document.getElementById('check-steam-btn')?.addEventListener('click', function() { 
+        debounce(checkSteamProfile); 
+    });
+    document.getElementById('invite-friend-btn')?.addEventListener('click', function() { 
+        debounce(inviteFriend); 
+    });
+    document.getElementById('copy-referral-link-btn')?.addEventListener('click', function() { 
+        debounce(copyEnhancedReferralLink); 
+    });
     
     // Steam ввод по Enter
     const steamInput = document.getElementById('steam-profile-input');
