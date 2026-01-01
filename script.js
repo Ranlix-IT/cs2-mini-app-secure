@@ -44,7 +44,26 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Тестируем API соединение
     setTimeout(testAPIConnection, 1000);
+    
+    // Регистрация Service Worker для PWA
+    registerServiceWorker();
 });
+
+// Регистрация Service Worker
+function registerServiceWorker() {
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+            navigator.serviceWorker.register('/service-worker.js').then(
+                function(registration) {
+                    console.log('✅ ServiceWorker зарегистрирован: ', registration.scope);
+                },
+                function(err) {
+                    console.log('❌ Ошибка регистрации ServiceWorker: ', err);
+                }
+            );
+        });
+    }
+}
 
 // ===== TELEGRAM ИНИЦИАЛИЗАЦИЯ =====
 function initializeTelegramApp() {
