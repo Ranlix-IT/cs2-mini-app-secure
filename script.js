@@ -1,13 +1,14 @@
-// Telegram Web App SDK
+// script.js - CS2 Skin Bot
 let tg;
 let appState = {
     user: null,
-    balance: 1000, // Начальный баланс для демо
+    balance: 1000,
     inventory: [],
     dailyBonusAvailable: true,
     referralCode: "",
     tradeLink: "",
-    referralsCount: 0
+    referralsCount: 0,
+    currentSection: null  // ← ДОБАВЛЕНО: отслеживаем текущую секцию
 };
 
 const API_BASE_URL = "https://cs2-mini-app.onrender.com";
@@ -21,12 +22,10 @@ document.addEventListener('DOMContentLoaded', function() {
     updateBonusTimer();
     setInterval(updateBonusTimer, 1000);
     
-    // Сразу обновляем UI для демо
     updateUserInfo();
     updateInventoryUI();
     updateProfileInfo();
     
-    // Тестируем API соединение
     setTimeout(testAPIConnection, 1000);
 });
 
@@ -44,9 +43,7 @@ function initializeTelegramApp() {
         tg.expand();
         
         console.log('📱 Telegram WebApp версия:', tg.version);
-        console.log('📱 Telegram initDataUnsafe:', tg.initDataUnsafe);
         
-        // Пытаемся получить данные пользователя
         if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
             const userData = tg.initDataUnsafe.user;
             appState.user = {
@@ -57,12 +54,9 @@ function initializeTelegramApp() {
             };
             
             console.log("✅ Пользователь Telegram авторизован:", appState.user);
-            
-            // Загружаем реальные данные с сервера
             loadUserData();
         } else {
             console.warn("⚠️ Данные пользователя Telegram не получены");
-            console.log("📱 Полный initDataUnsafe:", JSON.stringify(tg.initDataUnsafe));
             useTestData();
         }
         
@@ -100,14 +94,6 @@ function useTestData() {
             type: 'weapon',
             rarity: 'uncommon',
             received_at: Date.now() / 1000
-        },
-        {
-            id: '3',
-            name: 'Five-SeveN | Хладагент',
-            price: 750,
-            type: 'weapon',
-            rarity: 'rare',
-            received_at: Date.now() / 1000
         }
     ];
     
@@ -123,7 +109,7 @@ function useTestData() {
     showToast('Демо-режим', 'Используются тестовые данные', 'info');
 }
 
-// ===== ОБРАБОТЧИКИ СОБЫТИЙ =====
+// ===== ОБРАБОТЧИКИ СОБЫТИЙ (ИСПРАВЛЕНО) =====
 function setupEventListeners() {
     console.log("🔧 Настройка обработчиков событий...");
     
@@ -156,7 +142,8 @@ function setupEventListeners() {
         });
     });
     
-    // Кнопки открытия кейсов
+    // ==== ВАЖНОЕ ИСПРАВЛЕНИЕ: Кнопки открытия кейсов ====
+    // ТОЛЬКО кнопка "Открыть", НЕ вся карточка
     document.querySelectorAll('.open-case-btn').forEach(btn => {
         btn.addEventListener('click', function(e) {
             e.stopPropagation();
@@ -169,11 +156,12 @@ function setupEventListeners() {
         });
     });
     
-    // Клик на всей карточке кейса
+    // Клик на карточке кейса (НЕ на кнопке "Открыть")
     document.querySelectorAll('.case-card').forEach(card => {
         card.addEventListener('click', function(e) {
-            // Если клик не на кнопке "Открыть"
-            if (!e.target.closest('.open-case-btn')) {
+            // Разрешаем клик ТОЛЬКО если НЕ кликнули на кнопку "Открыть"
+            if (!e.target.closest('.open-case-btn') && 
+                !e.target.closest('.case-price')) {
                 const price = this.getAttribute('data-price');
                 if (price) {
                     openCase(parseInt(price));
@@ -188,11 +176,12 @@ function setupEventListeners() {
         dailyBonusBtn.addEventListener('click', claimDailyBonus);
     }
     
-    // Кнопки назад в секциях (только в секциях, не в анимации!)
-    document.querySelectorAll('.page-section .back-btn').forEach(btn => {
+    // ==== ВАЖНОЕ ИСПРАВЛЕНИЕ: Кнопки назад в секциях ====
+    document.querySelectorAll('.back-btn').forEach(btn => {
         btn.addEventListener('click', function(e) {
             e.preventDefault();
             e.stopPropagation();
+            console.log("🔙 Кнопка НАЗАД нажата");
             backToMain();
         });
     });
@@ -211,7 +200,7 @@ function setupEventListeners() {
     const caseOpening = document.getElementById('case-opening');
     if (caseOpening) {
         caseOpening.addEventListener('click', function(e) {
-            if (e.target === this) { // Клик на самом overlay, а не на содержимом
+            if (e.target === this) {
                 e.preventDefault();
                 e.stopPropagation();
                 closeCaseOpening();
@@ -237,7 +226,6 @@ function setupEventListeners() {
         copyRefBtn.addEventListener('click', copyReferralLink);
     }
     
-    // Кнопка в меню для копирования реферальной ссылки
     const copyReferralBtn = document.getElementById('copy-referral-btn');
     if (copyReferralBtn) {
         copyReferralBtn.addEventListener('click', copyReferralLink);
@@ -283,13 +271,10 @@ function setupEventListeners() {
             e.preventDefault();
             const filter = this.getAttribute('data-filter');
             if (filter) {
-                // Убираем активный класс со всех кнопок
                 document.querySelectorAll('.filter-btn').forEach(b => {
                     b.classList.remove('active');
                 });
-                // Добавляем активный класс на текущую кнопку
                 this.classList.add('active');
-                // Применяем фильтр
                 filterInventory(filter);
             }
         });
@@ -316,11 +301,14 @@ function setupEventListeners() {
     console.log("✅ Обработчики событий установлены");
 }
 
-// ===== НАВИГАЦИЯ =====
+// ===== НАВИГАЦИЯ (ИСПРАВЛЕНО) =====
 function openSection(sectionName) {
     console.log(`📱 Открываем раздел: ${sectionName}`);
     
-    // Скрываем основной контент (бонус, быстрые действия)
+    // Сохраняем текущую секцию
+    appState.currentSection = sectionName;
+    
+    // Скрываем основной контент
     const mainElements = document.querySelectorAll('.main-content > *:not(.page-section)');
     mainElements.forEach(element => {
         element.style.display = 'none';
@@ -338,11 +326,9 @@ function openSection(sectionName) {
         targetSection.classList.remove('hidden');
         targetSection.style.display = 'block';
         
-        // Прокручиваем вверх
         window.scrollTo(0, 0);
         targetSection.scrollTop = 0;
         
-        // Загружаем данные если нужно
         if (sectionName === 'inventory') {
             updateInventoryUI();
         } else if (sectionName === 'promo') {
@@ -350,14 +336,13 @@ function openSection(sectionName) {
         }
     }
     
-    // Закрываем меню если открыто
     toggleMenu(false);
 }
 
 function backToMain() {
-    console.log("🔙 Возврат на главную");
+    console.log("🔙 Вызов backToMain()");
     
-    // Сначала закрываем анимацию открытия кейса если она открыта
+    // ОБЯЗАТЕЛЬНО сначала закрываем анимацию кейса
     closeCaseOpening();
     
     // Показываем основной контент
@@ -371,6 +356,9 @@ function backToMain() {
         section.classList.add('hidden');
         section.style.display = 'none';
     });
+    
+    // Сбрасываем текущую секцию
+    appState.currentSection = null;
     
     // Прокручиваем вверх
     window.scrollTo(0, 0);
@@ -394,24 +382,18 @@ function toggleMenu(show) {
     }
 }
 
-// ===== API ФУНКЦИИ =====
+// ===== API ФУНКЦИИ (оставить как было) =====
 async function apiRequest(endpoint, method = 'GET', data = null) {
     try {
         const headers = {
             'Content-Type': 'application/json',
         };
         
-        // Добавляем авторизацию из Telegram если есть
         if (tg && tg.initData) {
             headers['Authorization'] = `tma ${tg.initData}`;
-            console.log('🔐 Добавляем Telegram авторизацию');
         } else if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
-            // Если нет initData, но есть данные пользователя, используем их для демо
-            console.log('⚠️ Нет initData, используем демо-режим для API');
             return simulateAPIResponse(endpoint, method, data);
         } else {
-            // Если нет данных Telegram, используем демо-режим
-            console.log('⚠️ Нет данных Telegram, используем демо-режим');
             return simulateAPIResponse(endpoint, method, data);
         }
         
@@ -434,7 +416,6 @@ async function apiRequest(endpoint, method = 'GET', data = null) {
         
         if (!response.ok) {
             if (response.status === 401) {
-                console.warn('🔐 Ошибка авторизации 401, переходим в демо-режим');
                 return simulateAPIResponse(endpoint, method, data);
             }
             throw new Error(`HTTP ${response.status}`);
@@ -444,12 +425,11 @@ async function apiRequest(endpoint, method = 'GET', data = null) {
         
     } catch (error) {
         console.error(`❌ API Error (${endpoint}):`, error);
-        // В случае ошибки используем демо-режим
         return simulateAPIResponse(endpoint, method, data);
     }
 }
 
-// Симуляция API ответов для демо-режима
+// Симуляция API ответов (оставить как было)
 function simulateAPIResponse(endpoint, method, data) {
     console.log(`🎭 Симуляция API ответа для: ${endpoint}`);
     
@@ -473,7 +453,7 @@ function simulateAPIResponse(endpoint, method, data) {
             
         case '/api/daily-bonus':
             if (method === 'POST') {
-                const bonusAmount = Math.floor(Math.random() * 100) + 50; // 50-150
+                const bonusAmount = Math.floor(Math.random() * 100) + 50;
                 appState.balance += bonusAmount;
                 appState.dailyBonusAvailable = false;
                 return Promise.resolve({
@@ -492,7 +472,6 @@ function simulateAPIResponse(endpoint, method, data) {
                 if (appState.balance >= price) {
                     appState.balance -= price;
                     
-                    // Генерируем случайный предмет
                     const items = [
                         { name: 'Наклейка | ENCE |', price: Math.floor(price * 0.8), type: 'sticker', rarity: 'common' },
                         { name: 'FAMAS | Колония', price: Math.floor(price * 1.2), type: 'weapon', rarity: 'uncommon' },
@@ -594,7 +573,6 @@ function simulateAPIResponse(endpoint, method, data) {
             });
     }
     
-    // По умолчанию возвращаем успех
     return Promise.resolve({
         success: true,
         message: "Демо-режим: операция выполнена",
@@ -609,7 +587,6 @@ async function loadUserData() {
         const response = await apiRequest('/api/user');
         
         if (response.success && !response.demo_mode) {
-            // Обновляем только если не демо-режим
             appState.balance = response.user.balance;
             appState.inventory = response.user.inventory || [];
             appState.dailyBonusAvailable = response.daily_bonus_available;
@@ -623,13 +600,11 @@ async function loadUserData() {
             
             showToast('Добро пожаловать!', `Баланс: ${appState.balance} баллов`, 'success');
         } else if (response.demo_mode) {
-            // Уже используем демо данные
             console.log('🎭 Используем демо-данные');
         }
         
     } catch (error) {
         console.error('❌ Ошибка загрузки данных:', error);
-        // Уже используем тестовые данные
     }
 }
 
@@ -760,7 +735,6 @@ async function setTradeLink() {
 
 async function withdrawItem(itemId) {
     try {
-        // Сначала проверяем трейд ссылку
         if (!appState.tradeLink) {
             openSection('profile');
             showToast('Требуется ссылка', 'Укажите трейд ссылку в профиле', 'warning');
@@ -772,7 +746,6 @@ async function withdrawItem(itemId) {
         });
         
         if (response.success) {
-            // Обновляем инвентарь
             appState.inventory = appState.inventory.filter(item => item.id !== itemId);
             updateInventoryUI();
             
@@ -803,19 +776,16 @@ async function loadAvailablePromos() {
 // ===== UI ФУНКЦИИ =====
 function updateUserInfo() {
     if (appState.user) {
-        // Обновляем имя в заголовке
         const userNameElement = document.getElementById('user-name');
         if (userNameElement) {
             userNameElement.textContent = appState.user.firstName;
         }
         
-        // Обновляем баланс
         const balanceElement = document.getElementById('balance');
         if (balanceElement) {
             balanceElement.textContent = appState.balance;
         }
         
-        // Обновляем меню
         const menuUsername = document.getElementById('menu-username');
         const menuBalance = document.getElementById('menu-balance');
         if (menuUsername) menuUsername.textContent = appState.user.firstName;
@@ -830,7 +800,6 @@ function updateInventoryUI() {
     
     if (!inventoryList) return;
     
-    // Очищаем список
     inventoryList.innerHTML = '';
     
     if (appState.inventory.length === 0) {
@@ -852,10 +821,8 @@ function updateInventoryUI() {
         return;
     }
     
-    // Считаем статистику
     let totalPrice = 0;
     
-    // Добавляем предметы
     appState.inventory.forEach((item, index) => {
         totalPrice += item.price || 0;
         
@@ -880,7 +847,6 @@ function updateInventoryUI() {
         inventoryList.appendChild(itemElement);
     });
     
-    // Обновляем статистику
     if (totalItems) totalItems.textContent = appState.inventory.length;
     if (totalValue) totalValue.textContent = totalPrice;
 }
@@ -899,8 +865,6 @@ function filterInventory(filterType) {
     const inventoryList = document.getElementById('inventory-list');
     if (!inventoryList) return;
     
-    // В реальном приложении здесь была бы фильтрация
-    // Для демо просто показываем сообщение
     if (filterType !== 'all') {
         showToast('Фильтр', `Показываем предметы типа: ${filterType}`, 'info');
     }
@@ -962,8 +926,7 @@ function updateBonusTimer() {
         bonusBtn.innerHTML = '<i class="fas fa-gift"></i> Забрать';
         bonusBtn.style.opacity = '1';
     } else {
-        // Таймер для следующего бонуса (через 24 часа)
-        const nextBonusTime = Date.now() + 86400000; // 24 часа
+        const nextBonusTime = Date.now() + 86400000;
         const now = Date.now();
         const diff = nextBonusTime - now;
         
@@ -996,7 +959,6 @@ function showCaseOpening() {
         openingElement.style.display = 'flex';
         openingText.textContent = 'Открываем кейс...';
         
-        // Скрываем список выигранных предметов
         const wonItem = document.getElementById('won-item');
         if (wonItem) {
             wonItem.innerHTML = '';
@@ -1055,7 +1017,6 @@ function showToast(title, message, type = 'info') {
     
     container.appendChild(toast);
     
-    // Удаляем через 5 секунд
     setTimeout(() => {
         toast.classList.add('hiding');
         setTimeout(() => {
@@ -1069,7 +1030,6 @@ function showToast(title, message, type = 'info') {
 function copyReferralLink() {
     const link = `https://t.me/MeteoHinfoBot?start=${appState.referralCode}`;
     
-    // Пытаемся использовать современный Clipboard API
     if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(link)
             .then(() => showToast('Скопировано!', 'Реферальная ссылка скопирована', 'success'))
@@ -1078,7 +1038,6 @@ function copyReferralLink() {
                 fallbackCopy(link);
             });
     } else {
-        // Fallback для старых браузеров
         fallbackCopy(link);
     }
 }
@@ -1117,7 +1076,6 @@ function closeApp() {
 }
 
 // ===== ГЛОБАЛЬНЫЕ ФУНКЦИИ ДЛЯ HTML =====
-// Делаем функции доступными глобально для onclick атрибутов в инвентаре
 window.openSection = openSection;
 window.backToMain = backToMain;
 window.claimDailyBonus = claimDailyBonus;
