@@ -406,7 +406,7 @@ body {
     transform: scale(1.05);
 }
 
-/* ===== PROFILE SECTION ===== */
+/* ===== ПРОФИЛЬ ===== */
 .profile-container {
     background: var(--dark-card);
     border-radius: var(--border-radius);
@@ -555,7 +555,7 @@ body {
     box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
 }
 
-/* ===== INVENTORY ===== */
+/* ===== ИНВЕНТАРЬ ===== */
 .inventory-stats {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -707,68 +707,507 @@ body {
     box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
 }
 
-/* ===== EARN SECTION ===== */
-.earn-methods {
+/* ===== УЛУЧШЕННЫЙ РАЗДЕЛ ЗАРАБОТКА ===== */
+.earn-overview {
+    margin-bottom: 20px;
+}
+
+.earn-stats {
     display: grid;
     gap: 15px;
 }
 
-.earn-card {
+.stat-card.large {
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+    padding: 20px;
+    border-radius: var(--border-radius);
+    color: white;
+}
+
+.stat-card.large .stat-icon {
+    font-size: 32px;
+    color: white;
+}
+
+.stat-card.large .stat-value {
+    font-size: 32px;
+    font-weight: bold;
+    color: #ffd700;
+}
+
+.stat-card.large .stat-label {
+    font-size: 14px;
+    opacity: 0.9;
+    color: white;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+}
+
+.stats-grid .stat-card {
+    background: var(--dark-card);
+    padding: 15px;
+    border-radius: var(--border-radius);
+    text-align: center;
+}
+
+.stats-grid .stat-card .stat-icon {
+    font-size: 20px;
+    margin-bottom: 10px;
+}
+
+.stats-grid .stat-card .stat-value {
+    font-size: 18px;
+    font-weight: bold;
+    color: var(--primary-color);
+    display: block;
+}
+
+.stats-grid .stat-card .stat-label {
+    font-size: 12px;
+    color: var(--text-gray);
+    display: block;
+}
+
+/* Прогресс реферальной системы */
+.referral-progress {
     background: var(--dark-card);
     border-radius: var(--border-radius);
     padding: 20px;
+    margin-bottom: 20px;
+}
+
+.referral-progress h4 {
     display: flex;
     align-items: center;
-    gap: 15px;
+    gap: 10px;
+    margin-bottom: 15px;
+    font-size: 18px;
 }
 
-.earn-icon {
-    font-size: 32px;
-    color: var(--primary-color);
-    flex-shrink: 0;
+.referral-progress h4 i {
+    color: var(--warning-color);
 }
 
-.earn-info {
-    flex: 1;
+.progress-bar-container {
+    height: 10px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 5px;
+    margin-bottom: 10px;
+    overflow: hidden;
 }
 
-.earn-info h4 {
-    margin-bottom: 5px;
+.progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+    border-radius: 5px;
+    transition: width 0.5s ease;
 }
 
-.earn-info p {
-    color: var(--text-gray);
+.progress-info {
+    display: flex;
+    justify-content: space-between;
     font-size: 14px;
     margin-bottom: 10px;
 }
 
-.earn-reward {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    color: #ffd700;
-    font-weight: 600;
+.tier-info {
     font-size: 14px;
+    color: var(--text-gray);
 }
 
-.earn-btn {
+.tier-info span {
+    color: var(--primary-color);
+    font-weight: bold;
+}
+
+/* Улучшенные карточки заработка */
+.earn-methods-enhanced {
+    display: grid;
+    gap: 15px;
+}
+
+.earn-card.enhanced {
+    background: var(--dark-card);
+    border-radius: var(--border-radius);
+    overflow: hidden;
+    transition: var(--transition);
+}
+
+.earn-card.enhanced:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+.earn-card-header {
+    padding: 20px 20px 15px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.earn-card-header .earn-icon {
+    font-size: 28px;
+    color: var(--primary-color);
+    flex-shrink: 0;
+}
+
+.earn-card-title {
+    flex: 1;
+}
+
+.earn-card-title h4 {
+    font-size: 18px;
+    margin-bottom: 5px;
+}
+
+.earn-subtitle {
+    font-size: 14px;
+    color: var(--text-gray);
+}
+
+.status-badge {
+    flex-shrink: 0;
+}
+
+.badge {
+    padding: 5px 12px;
+    border-radius: 15px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.badge.success {
+    background: rgba(72, 187, 120, 0.2);
+    color: var(--success-color);
+    border: 1px solid var(--success-color);
+}
+
+.badge.warning {
+    background: rgba(237, 137, 54, 0.2);
+    color: var(--warning-color);
+    border: 1px solid var(--warning-color);
+}
+
+.badge.error {
+    background: rgba(245, 101, 101, 0.2);
+    color: var(--danger-color);
+    border: 1px solid var(--danger-color);
+}
+
+.badge.pending {
+    background: rgba(102, 126, 234, 0.2);
+    color: var(--primary-color);
+    border: 1px solid var(--primary-color);
+}
+
+.badge.locked {
+    background: rgba(113, 128, 150, 0.2);
+    color: var(--text-gray);
+    border: 1px solid var(--text-gray);
+}
+
+.earn-card-body {
+    padding: 20px;
+}
+
+.earn-card-body .instructions {
+    font-size: 14px;
+    color: var(--text-gray);
+    margin-bottom: 20px;
+    line-height: 1.5;
+}
+
+.earn-card-body .instructions strong {
+    color: var(--primary-color);
+}
+
+/* Реферальная ссылка */
+.referral-link-box {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: var(--border-radius);
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.referral-link-label {
+    font-size: 12px;
+    color: var(--text-gray);
+    margin-bottom: 5px;
+}
+
+.referral-link-value {
+    font-family: monospace;
+    font-size: 14px;
+    word-break: break-all;
+    margin-bottom: 10px;
+    color: var(--primary-color);
+}
+
+.copy-link-btn {
+    width: 100%;
     background: var(--primary-color);
     color: white;
     border: none;
-    padding: 10px 15px;
-    border-radius: 8px;
+    padding: 10px;
+    border-radius: var(--border-radius);
     font-weight: 600;
     cursor: pointer;
     transition: var(--transition);
     display: flex;
     align-items: center;
-    gap: 5px;
-    white-space: nowrap;
+    justify-content: center;
+    gap: 8px;
 }
 
-.earn-btn:hover {
+.copy-link-btn:hover {
     background: var(--primary-dark);
-    transform: scale(1.05);
+    transform: translateY(-2px);
+}
+
+/* Milestone информация */
+.milestone-info {
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+    border-radius: var(--border-radius);
+    padding: 15px;
+    border: 1px solid rgba(102, 126, 234, 0.2);
+}
+
+.milestone-label {
+    font-size: 12px;
+    color: var(--text-gray);
+    margin-bottom: 5px;
+}
+
+.milestone-value {
+    font-weight: 600;
+    margin-bottom: 5px;
+    color: var(--primary-color);
+}
+
+.milestone-reward {
+    color: #ffd700;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+/* Шаги верификации */
+.verification-steps {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.step {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+}
+
+.step i.fa-user,
+.step i.fa-file-alt {
+    color: var(--primary-color);
+    font-size: 16px;
+    width: 24px;
+}
+
+.step span {
+    flex: 1;
+    font-size: 14px;
+}
+
+.step i.fa-check-circle {
+    color: var(--success-color);
+    font-size: 16px;
+}
+
+.step i.fa-times-circle {
+    color: var(--danger-color);
+    font-size: 16px;
+}
+
+/* Информация о наградах */
+.reward-info {
+    display: grid;
+    gap: 10px;
+}
+
+.reward-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+}
+
+.reward-item i {
+    color: #ffd700;
+    width: 20px;
+}
+
+.reward-item strong {
+    color: var(--primary-color);
+}
+
+/* Steam профиль */
+.steam-input-group {
+    margin-bottom: 20px;
+}
+
+#steam-profile-input {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.1);
+    border: 2px solid var(--primary-color);
+    border-radius: var(--border-radius);
+    padding: 12px 15px;
+    color: white;
+    font-size: 14px;
+    outline: none;
+    transition: var(--transition);
+}
+
+#steam-profile-input:focus {
+    border-color: var(--secondary-color);
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.3);
+}
+
+.steam-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.steam-stat {
+    background: rgba(0, 0, 0, 0.2);
+    padding: 12px;
+    border-radius: 8px;
+    text-align: center;
+    font-size: 12px;
+}
+
+.steam-stat i {
+    color: var(--primary-color);
+    font-size: 16px;
+    margin-bottom: 5px;
+    display: block;
+}
+
+.steam-stat strong {
+    color: #ffd700;
+    font-size: 14px;
+}
+
+/* Пассивный доход */
+.passive-income-info {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.income-tier {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    transition: var(--transition);
+}
+
+.income-tier:hover {
+    background: rgba(0, 0, 0, 0.3);
+    transform: translateX(5px);
+}
+
+.income-tier i {
+    font-size: 20px;
+    color: var(--primary-color);
+    width: 30px;
+}
+
+.income-tier .tier-name {
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+
+.income-tier .tier-percent {
+    font-size: 12px;
+    color: var(--text-gray);
+}
+
+.current-income {
+    text-align: center;
+    padding: 15px;
+    background: linear-gradient(135deg, rgba(72, 187, 120, 0.1) 0%, rgba(56, 161, 105, 0.1) 100%);
+    border-radius: var(--border-radius);
+    border: 1px solid rgba(72, 187, 120, 0.3);
+}
+
+.current-percent {
+    font-size: 36px;
+    font-weight: bold;
+    color: var(--success-color);
+    margin-bottom: 5px;
+}
+
+.current-label {
+    font-size: 14px;
+    color: var(--text-gray);
+}
+
+/* Футер карточки */
+.earn-card-footer {
+    padding: 15px 20px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.earn-btn.large {
+    width: 100%;
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+    color: white;
+    border: none;
+    padding: 15px;
+    border-radius: var(--border-radius);
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    font-size: 16px;
+}
+
+.earn-btn.large:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+}
+
+.earn-btn.large:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.info-text {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--text-gray);
+    text-align: center;
+    justify-content: center;
+}
+
+.info-text i {
+    color: var(--info-color);
 }
 
 /* ===== PROMO CODE ===== */
@@ -923,7 +1362,7 @@ body {
     50% { transform: translateY(-10px); }
 }
 
-/* ===== УЛУЧШЕННЫЙ ДИЗАЙН КНОПКИ ЗАКРЫТИЯ ===== */
+/* Улучшенный дизайн кнопки закрытия */
 .close-case-btn {
     background: linear-gradient(135deg, var(--danger-color) 0%, #c53030 100%);
     color: white;
@@ -1013,6 +1452,56 @@ body {
 .won-item-content i.fa-gift {
     animation: confetti 0.8s ease-out;
     color: #ffd700;
+}
+
+/* Уведомления о наградах */
+.reward-notification {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+    color: white;
+    padding: 30px;
+    border-radius: var(--border-radius);
+    text-align: center;
+    z-index: 10000;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+    animation: popIn 0.5s ease;
+}
+
+@keyframes popIn {
+    0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+    100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
+
+.reward-notification h3 {
+    font-size: 24px;
+    margin-bottom: 10px;
+}
+
+.reward-notification .reward-amount {
+    font-size: 48px;
+    font-weight: bold;
+    color: #ffd700;
+    margin: 20px 0;
+}
+
+.reward-notification p {
+    font-size: 16px;
+    opacity: 0.9;
+    margin-bottom: 20px;
+}
+
+/* Анимации */
+@keyframes pulseGlow {
+    0% { box-shadow: 0 0 0 0 rgba(102, 126, 234, 0.7); }
+    70% { box-shadow: 0 0 0 10px rgba(102, 126, 234, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(102, 126, 234, 0); }
+}
+
+.earn-card.pulse {
+    animation: pulseGlow 2s infinite;
 }
 
 /* ===== SIDE MENU ===== */
@@ -1236,13 +1725,14 @@ body {
     opacity: 0.9;
 }
 
-/* ===== RESPONSIVE DESIGN ===== */
+/* ===== АДАПТИВНОСТЬ ===== */
 @media (max-width: 400px) {
     .actions-grid {
         grid-template-columns: 1fr;
     }
     
-    .inventory-stats {
+    .inventory-stats,
+    .stats-grid {
         grid-template-columns: 1fr;
     }
     
@@ -1262,9 +1752,22 @@ body {
     .trade-link-input-group {
         flex-direction: column;
     }
+    
+    .steam-stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .reward-notification {
+        width: 90%;
+        padding: 20px;
+    }
+    
+    .reward-notification .reward-amount {
+        font-size: 36px;
+    }
 }
 
-/* ===== SCROLLBAR STYLING ===== */
+/* ===== SCROLLBAR ===== */
 ::-webkit-scrollbar {
     width: 6px;
 }
