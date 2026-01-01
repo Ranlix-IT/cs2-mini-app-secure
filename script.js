@@ -1624,6 +1624,7 @@ function closeApp() {
 }
 
 // ===== ГЛОБАЛЬНЫЕ ФУНКЦИИ ДЛЯ HTML =====
+// Объявляем функции глобально для onclick атрибутов
 window.openSection = openSection;
 window.backToMain = backToMain;
 window.claimDailyBonus = claimDailyBonus;
