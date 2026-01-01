@@ -377,7 +377,7 @@ function openSection(sectionName) {
         section.style.display = 'none';
     });
     
-    // Показываем выбранную секцию
+    // Показываем выбранную секции
     const targetSection = document.getElementById(`${sectionName}-section`);
     if (targetSection) {
         targetSection.classList.remove('hidden');
@@ -1537,12 +1537,12 @@ function updateBonusTimer() {
 
 // ===== АНИМАЦИИ =====
 function showCaseOpening() {
-    const openingElement = document.getElementById('case-opening');
+    const caseOpening = document.getElementById('case-opening');
     const openingText = document.getElementById('opening-text');
     
-    if (openingElement && openingText) {
-        openingElement.classList.remove('hidden');
-        openingElement.style.display = 'flex';
+    if (caseOpening && openingText) {
+        caseOpening.classList.remove('hidden');
+        caseOpening.style.display = 'flex';
         openingText.textContent = 'Открываем кейс...';
         
         // Скрываем список выигранных предметов
@@ -1576,10 +1576,10 @@ function showWonItem(itemName, itemPrice) {
 
 function closeCaseOpening() {
     console.log("❌ Закрытие анимации открытия кейса");
-    const openingElement = document.getElementById('case-opening');
-    if (openingElement) {
-        openingElement.classList.add('hidden');
-        openingElement.style.display = 'none';
+    const caseOpening = document.getElementById('case-opening');
+    if (caseOpening) {
+        caseOpening.classList.add('hidden');
+        caseOpening.style.display = 'none';
     }
 }
 
