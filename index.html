@@ -291,72 +291,256 @@
                     <button class="back-btn">
                         <i class="fas fa-arrow-left"></i>
                     </button>
-                    <h2><i class="fas fa-money-bill-wave"></i> Заработать</h2>
+                    <h2><i class="fas fa-money-bill-wave"></i> Усиленный заработок</h2>
                 </div>
                 
-                <div class="earn-methods">
-                    <div class="earn-card">
-                        <div class="earn-icon">
-                            <i class="fas fa-user-friends"></i>
-                        </div>
-                        <div class="earn-info">
-                            <h4>Пригласи друга</h4>
-                            <p>Получи 500 баллов за каждого</p>
-                            <div class="earn-reward">
-                                <i class="fas fa-coins"></i> +500 баллов
+                <!-- Общая статистика -->
+                <div class="earn-overview">
+                    <div class="earn-stats">
+                        <div class="stat-card large">
+                            <div class="stat-icon">
+                                <i class="fas fa-chart-line"></i>
+                            </div>
+                            <div class="stat-info">
+                                <span class="stat-value" id="total-earned">0</span>
+                                <span class="stat-label">Всего заработано</span>
                             </div>
                         </div>
-                        <button class="earn-btn" id="copy-referral-btn">
-                            <i class="fas fa-copy"></i> Копировать ссылку
-                        </button>
+                        
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <div class="stat-icon">
+                                    <i class="fas fa-users"></i>
+                                </div>
+                                <div class="stat-info">
+                                    <span class="stat-value" id="total-invites">0</span>
+                                    <span class="stat-label">Рефералов</span>
+                                </div>
+                            </div>
+                            
+                            <div class="stat-card">
+                                <div class="stat-icon">
+                                    <i class="fab fa-telegram"></i>
+                                </div>
+                                <div class="stat-info">
+                                    <span class="stat-value" id="telegram-earned">0</span>
+                                    <span class="stat-label">Telegram</span>
+                                </div>
+                            </div>
+                            
+                            <div class="stat-card">
+                                <div class="stat-icon">
+                                    <i class="fab fa-steam"></i>
+                                </div>
+                                <div class="stat-info">
+                                    <span class="stat-value" id="steam-earned">0</span>
+                                    <span class="stat-label">Steam</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Прогресс реферальной системы -->
+                <div class="referral-progress">
+                    <h4><i class="fas fa-trophy"></i> Реферальный уровень</h4>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" id="referral-progress-bar" style="width: 0%"></div>
+                    </div>
+                    <div class="progress-info">
+                        <span id="current-invites">0</span>
+                        <span id="next-milestone">/ 0</span>
+                    </div>
+                    <div class="tier-info">
+                        Текущий уровень: <span id="current-tier">Начинающий</span>
+                    </div>
+                </div>
+                
+                <!-- Способы заработка -->
+                <div class="earn-methods-enhanced">
+                    <!-- Приглашение друзей -->
+                    <div class="earn-card enhanced">
+                        <div class="earn-card-header">
+                            <div class="earn-icon">
+                                <i class="fas fa-user-friends"></i>
+                            </div>
+                            <div class="earn-card-title">
+                                <h4>Пригласи друга</h4>
+                                <p class="earn-subtitle">+500 баллов за каждого + бонусы</p>
+                            </div>
+                        </div>
+                        <div class="earn-card-body">
+                            <p>Приглашайте друзей и получайте баллы за каждого!</p>
+                            <div class="referral-link-box">
+                                <div class="referral-link-label">Ваша реферальная ссылка:</div>
+                                <div class="referral-link-value" id="referral-link-text">Загрузка...</div>
+                                <button class="copy-link-btn" id="copy-referral-link-btn">
+                                    <i class="fas fa-copy"></i> Копировать
+                                </button>
+                            </div>
+                            <div class="milestone-info">
+                                <div class="milestone-label">Следующая цель:</div>
+                                <div class="milestone-value" id="next-milestone-text">Пригласить 5 друзей</div>
+                                <div class="milestone-reward" id="next-milestone-reward">+1000 баллов</div>
+                            </div>
+                        </div>
+                        <div class="earn-card-footer">
+                            <button class="earn-btn large" id="invite-friend-btn">
+                                <i class="fas fa-user-plus"></i> Пригласить друга
+                            </button>
+                        </div>
                     </div>
                     
-                    <div class="earn-card">
-                        <div class="earn-icon">
-                            <i class="fab fa-telegram"></i>
-                        </div>
-                        <div class="earn-info">
-                            <h4>Telegram сотрудничество</h4>
-                            <p>Добавь бота в профиль</p>
-                            <div class="earn-reward">
-                                <i class="fas fa-coins"></i> +500 баллов/7 дней
+                    <!-- Telegram профиль -->
+                    <div class="earn-card enhanced" id="telegram-card">
+                        <div class="earn-card-header">
+                            <div class="earn-icon">
+                                <i class="fab fa-telegram"></i>
+                            </div>
+                            <div class="earn-card-title">
+                                <h4>Telegram профиль</h4>
+                                <p class="earn-subtitle">+500 баллов + 500/7 дней</p>
+                            </div>
+                            <div class="status-badge" id="telegram-status-badge">
+                                <span class="badge pending">Не проверено</span>
                             </div>
                         </div>
-                        <button class="earn-btn" id="telegram-collab-btn">
-                            <i class="fas fa-rocket"></i> Начать
-                        </button>
+                        <div class="earn-card-body">
+                            <p class="instructions">Добавьте <strong>@rancasebot</strong> в фамилию и описание Telegram профиля</p>
+                            <div class="verification-steps">
+                                <div class="step">
+                                    <i class="fas fa-user"></i>
+                                    <span>Фамилия</span>
+                                    <i class="fas fa-check-circle success" id="telegram-lastname-check"></i>
+                                </div>
+                                <div class="step">
+                                    <i class="fas fa-file-alt"></i>
+                                    <span>Описание</span>
+                                    <i class="fas fa-check-circle success" id="telegram-bio-check"></i>
+                                </div>
+                            </div>
+                            <div class="reward-info">
+                                <div class="reward-item">
+                                    <i class="fas fa-gift"></i>
+                                    <span>Начальная награда: <strong>500 баллов</strong></span>
+                                </div>
+                                <div class="reward-item">
+                                    <i class="fas fa-calendar-week"></i>
+                                    <span>Еженедельно: <strong>500 баллов</strong></span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="earn-card-footer">
+                            <button class="earn-btn large" id="check-telegram-btn">
+                                <i class="fas fa-sync-alt"></i> Проверить Telegram
+                            </button>
+                        </div>
                     </div>
                     
-                    <div class="earn-card">
-                        <div class="earn-icon">
-                            <i class="fab fa-steam"></i>
-                        </div>
-                        <div class="earn-info">
-                            <h4>Steam сотрудничество</h4>
-                            <p>Добавь ссылку в Steam профиль</p>
-                            <div class="earn-reward">
-                                <i class="fas fa-coins"></i> +500 баллов/7 дней
+                    <!-- Steam профиль -->
+                    <div class="earn-card enhanced" id="steam-card">
+                        <div class="earn-card-header">
+                            <div class="earn-icon">
+                                <i class="fab fa-steam"></i>
+                            </div>
+                            <div class="earn-card-title">
+                                <h4>Steam профиль</h4>
+                                <p class="earn-subtitle">+1000 баллов + 750/7 дней</p>
+                            </div>
+                            <div class="status-badge" id="steam-status-badge">
+                                <span class="badge pending">Не проверено</span>
                             </div>
                         </div>
-                        <button class="earn-btn" id="steam-collab-btn">
-                            <i class="fas fa-rocket"></i> Начать
-                        </button>
+                        <div class="earn-card-body">
+                            <p class="instructions">Добавьте ссылку на бота в описание Steam профиля</p>
+                            <div class="steam-input-group">
+                                <input type="text" 
+                                       id="steam-profile-input" 
+                                       placeholder="https://steamcommunity.com/id/username"
+                                       maxlength="200">
+                            </div>
+                            <div class="steam-stats" id="steam-stats">
+                                <div class="steam-stat">
+                                    <i class="fas fa-level-up-alt"></i>
+                                    <span>Уровень: <strong id="steam-level">-</strong></span>
+                                </div>
+                                <div class="steam-stat">
+                                    <i class="fas fa-gamepad"></i>
+                                    <span>Игры: <strong id="steam-games">-</strong></span>
+                                </div>
+                                <div class="steam-stat">
+                                    <i class="fas fa-award"></i>
+                                    <span>Бейджи: <strong id="steam-badges">-</strong></span>
+                                </div>
+                            </div>
+                            <div class="reward-info">
+                                <div class="reward-item">
+                                    <i class="fas fa-gift"></i>
+                                    <span>Начальная награда: <strong>1000 баллов</strong></span>
+                                </div>
+                                <div class="reward-item">
+                                    <i class="fas fa-calendar-week"></i>
+                                    <span>Еженедельно: <strong>750 баллов</strong></span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="earn-card-footer">
+                            <button class="earn-btn large" id="check-steam-btn">
+                                <i class="fas fa-sync-alt"></i> Проверить Steam
+                            </button>
+                        </div>
                     </div>
                     
-                    <div class="earn-card">
-                        <div class="earn-icon">
-                            <i class="fas fa-tasks"></i>
-                        </div>
-                        <div class="earn-info">
-                            <h4>Ежедневные задания</h4>
-                            <p>Выполняй задания каждый день</p>
-                            <div class="earn-reward">
-                                <i class="fas fa-coins"></i> +100 баллов/день
+                    <!-- Пассивный доход -->
+                    <div class="earn-card enhanced" id="passive-income-card">
+                        <div class="earn-card-header">
+                            <div class="earn-icon">
+                                <i class="fas fa-coins"></i>
+                            </div>
+                            <div class="earn-card-title">
+                                <h4>Пассивный доход</h4>
+                                <p class="earn-subtitle">Проценты от дохода рефералов</p>
+                            </div>
+                            <div class="status-badge">
+                                <span class="badge locked" id="passive-income-status">Неактивен</span>
                             </div>
                         </div>
-                        <button class="earn-btn" id="daily-tasks-btn">
-                            <i class="fas fa-tasks"></i> Показать задания
-                        </button>
+                        <div class="earn-card-body">
+                            <p>Получайте процент от заработка ваших рефералов!</p>
+                            <div class="passive-income-info">
+                                <div class="income-tier">
+                                    <i class="fas fa-users"></i>
+                                    <div>
+                                        <div class="tier-name">10+ рефералов</div>
+                                        <div class="tier-percent">5% от их дохода</div>
+                                    </div>
+                                </div>
+                                <div class="income-tier">
+                                    <i class="fas fa-user-friends"></i>
+                                    <div>
+                                        <div class="tier-name">25+ рефералов</div>
+                                        <div class="tier-percent">10% от их дохода</div>
+                                    </div>
+                                </div>
+                                <div class="income-tier">
+                                    <i class="fas fa-crown"></i>
+                                    <div>
+                                        <div class="tier-name">50+ рефералов</div>
+                                        <div class="tier-percent">15% от их дохода</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="current-income">
+                                <div class="current-percent" id="current-passive-percent">0%</div>
+                                <div class="current-label">Ваш текущий процент</div>
+                            </div>
+                        </div>
+                        <div class="earn-card-footer">
+                            <div class="info-text">
+                                <i class="fas fa-info-circle"></i>
+                                <span>Активируется автоматически при достижении 10+ рефералов</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </section>
