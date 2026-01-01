@@ -923,24 +923,96 @@ body {
     50% { transform: translateY(-10px); }
 }
 
-.close-opening-btn {
-    background: var(--danger-color);
+/* ===== УЛУЧШЕННЫЙ ДИЗАЙН КНОПКИ ЗАКРЫТИЯ ===== */
+.close-case-btn {
+    background: linear-gradient(135deg, var(--danger-color) 0%, #c53030 100%);
     color: white;
     border: none;
     padding: 12px 30px;
     border-radius: 25px;
     font-weight: 600;
     cursor: pointer;
-    transition: var(--transition);
+    transition: all 0.3s ease;
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 8px;
-    margin: 0 auto;
+    margin: 20px auto 0;
+    position: relative;
+    overflow: hidden;
+    min-width: 120px;
 }
 
-.close-opening-btn:hover {
-    background: #e53e3e;
-    transform: scale(1.05);
+.close-case-btn::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, #e53e3e 0%, var(--danger-color) 100%);
+    z-index: -1;
+    transition: transform 0.3s ease;
+    transform: scaleX(0);
+    transform-origin: right;
+}
+
+.close-case-btn:hover::after {
+    transform: scaleX(1);
+    transform-origin: left;
+}
+
+.close-case-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 20px rgba(229, 62, 62, 0.3);
+}
+
+.close-case-btn:active {
+    transform: translateY(0);
+}
+
+/* Улучшенное окно с выигранным предметом */
+.won-item-content {
+    padding: 20px;
+    text-align: center;
+}
+
+.won-item-content h3 {
+    margin: 15px 0;
+    font-size: 22px;
+    color: white;
+    font-weight: 600;
+}
+
+.item-price-won {
+    color: #ffd700;
+    font-size: 18px;
+    margin: 10px 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-weight: 600;
+}
+
+.item-message {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 14px;
+    margin-top: 10px;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+}
+
+/* Анимация для выигранного предмета */
+@keyframes confetti {
+    0% { transform: translateY(-100px) rotate(0deg); opacity: 0; }
+    100% { transform: translateY(0) rotate(360deg); opacity: 1; }
+}
+
+.won-item-content i.fa-gift {
+    animation: confetti 0.8s ease-out;
+    color: #ffd700;
 }
 
 /* ===== SIDE MENU ===== */
