@@ -215,7 +215,7 @@ function setupEventListeners() {
             e.stopPropagation();
             e.preventDefault();
             const caseCard = this.closest('.case-card');
-            const price = caseCard?.getAttribute('data-price');
+            const price = caseCard ? caseCard.getAttribute('data-price') : null;
             if (price) {
                 openCase(parseInt(price));
             }
@@ -377,7 +377,7 @@ function openSection(sectionName) {
         section.style.display = 'none';
     });
     
-    // Показываем выбранную секции
+    // Показываем выбранную секцию
     const targetSection = document.getElementById(`${sectionName}-section`);
     if (targetSection) {
         targetSection.classList.remove('hidden');
@@ -510,10 +510,10 @@ function simulateAPIResponse(endpoint, method, data) {
             return Promise.resolve({
                 success: true,
                 user: {
-                    id: appState.user?.id || 1003215844,
-                    first_name: appState.user?.firstName || 'Демо',
-                    last_name: appState.user?.lastName || 'Пользователь',
-                    username: appState.user?.username || 'demo_user',
+                    id: appState.user ? appState.user.id : 1003215844,
+                    first_name: appState.user ? appState.user.firstName : 'Демо',
+                    last_name: appState.user ? appState.user.lastName : 'Пользователь',
+                    username: appState.user ? appState.user.username : 'demo_user',
                     balance: appState.balance,
                     inventory: appState.inventory,
                     referral_code: appState.referralCode,
@@ -930,7 +930,7 @@ async function claimDailyBonus() {
 
 async function activatePromoCode() {
     const input = document.getElementById('promo-code-input');
-    const promoCode = input?.value.trim().toUpperCase();
+    const promoCode = input ? input.value.trim().toUpperCase() : '';
     
     if (!promoCode) {
         showToast('Ошибка', 'Введите промокод', 'warning');
@@ -960,7 +960,7 @@ async function activatePromoCode() {
 
 async function setTradeLink() {
     const input = document.getElementById('trade-link-input');
-    const tradeLink = input?.value.trim();
+    const tradeLink = input ? input.value.trim() : '';
     
     if (!tradeLink) {
         showToast('Ошибка', 'Введите трейд ссылку', 'warning');
@@ -1037,34 +1037,46 @@ async function loadEarnData() {
         if (response.success) {
             const stats = response.stats;
             
-            // Обновляем статистику
-            document.getElementById('total-earned')?.textContent = stats.total_earned;
-            document.getElementById('total-invites')?.textContent = stats.total_invites;
-            document.getElementById('telegram-earned')?.textContent = stats.from_telegram;
-            document.getElementById('steam-earned')?.textContent = stats.from_steam;
+            // Обновляем статистику с проверкой существования элементов
+            const totalEarned = document.getElementById('total-earned');
+            const totalInvites = document.getElementById('total-invites');
+            const telegramEarned = document.getElementById('telegram-earned');
+            const steamEarned = document.getElementById('steam-earned');
+            
+            if (totalEarned) totalEarned.textContent = stats.total_earned;
+            if (totalInvites) totalInvites.textContent = stats.total_invites;
+            if (telegramEarned) telegramEarned.textContent = stats.from_telegram;
+            if (steamEarned) steamEarned.textContent = stats.from_steam;
             
             // Обновляем прогресс-бар
             if (response.progress_percent !== undefined) {
-                document.getElementById('referral-progress-bar').style.width = `${response.progress_percent}%`;
-                document.getElementById('current-invites').textContent = stats.total_invites;
+                const progressBar = document.getElementById('referral-progress-bar');
+                const currentInvites = document.getElementById('current-invites');
+                const nextMilestone = document.getElementById('next-milestone');
+                const nextMilestoneText = document.getElementById('next-milestone-text');
+                const nextMilestoneReward = document.getElementById('next-milestone-reward');
+                
+                if (progressBar) progressBar.style.width = `${response.progress_percent}%`;
+                if (currentInvites) currentInvites.textContent = stats.total_invites;
                 
                 if (response.next_milestone) {
-                    document.getElementById('next-milestone').textContent = ` / ${response.next_milestone.invites}`;
-                    document.getElementById('next-milestone-text').textContent = `Пригласить ${response.next_milestone.invites} друзей`;
-                    document.getElementById('next-milestone-reward').textContent = `+${response.next_milestone.bonus} баллов`;
+                    if (nextMilestone) nextMilestone.textContent = ` / ${response.next_milestone.invites}`;
+                    if (nextMilestoneText) nextMilestoneText.textContent = `Пригласить ${response.next_milestone.invites} друзей`;
+                    if (nextMilestoneReward) nextMilestoneReward.textContent = `+${response.next_milestone.bonus} баллов`;
                 }
             }
             
             // Обновляем текущий уровень
             if (response.next_milestone) {
-                document.getElementById('current-tier').textContent = response.next_milestone.badge || 'Новичок';
+                const currentTier = document.getElementById('current-tier');
+                if (currentTier) currentTier.textContent = response.next_milestone.badge || 'Новичок';
             }
             
             // Сохраняем состояние
             enhancedEarnState.nextMilestone = response.next_milestone;
             enhancedEarnState.progressPercent = response.progress_percent;
-            enhancedEarnState.telegramVerified = response.telegram_status?.verified || false;
-            enhancedEarnState.steamVerified = response.steam_status?.verified || false;
+            enhancedEarnState.telegramVerified = (response.telegram_status && response.telegram_status.verified) || false;
+            enhancedEarnState.steamVerified = (response.steam_status && response.steam_status.verified) || false;
             enhancedEarnState.passiveIncomePercent = stats.passive_income_percent || 0;
             
             // Обновляем статусы
@@ -1093,13 +1105,19 @@ async function loadReferralInfo() {
             }
             
             // Обновляем процент пассивного дохода
-            if (response.passive_income?.percent !== undefined) {
-                document.getElementById('current-passive-percent').textContent = `${response.passive_income.percent}%`;
+            const currentPassivePercent = document.getElementById('current-passive-percent');
+            const passiveIncomeStatus = document.getElementById('passive-income-status');
+            const passiveIncomeCard = document.getElementById('passive-income-card');
+            
+            if (response.passive_income && response.passive_income.percent !== undefined) {
+                if (currentPassivePercent) currentPassivePercent.textContent = `${response.passive_income.percent}%`;
                 
                 if (response.passive_income.enabled) {
-                    document.getElementById('passive-income-status').textContent = 'Активен';
-                    document.getElementById('passive-income-status').className = 'badge success';
-                    document.getElementById('passive-income-card').classList.add('pulse');
+                    if (passiveIncomeStatus) {
+                        passiveIncomeStatus.textContent = 'Активен';
+                        passiveIncomeStatus.className = 'badge success';
+                    }
+                    if (passiveIncomeCard) passiveIncomeCard.classList.add('pulse');
                 }
             }
         }
@@ -1112,30 +1130,41 @@ async function loadReferralInfo() {
 // Функция обновления статусов профилей
 function updateProfileStatuses(telegramStatus, steamStatus) {
     // Telegram
-    if (telegramStatus?.verified) {
-        document.getElementById('telegram-status-badge').innerHTML = '<span class="badge success">Проверено</span>';
-        document.getElementById('telegram-lastname-check').className = 'fas fa-check-circle success';
-        document.getElementById('telegram-bio-check').className = 'fas fa-check-circle success';
-        document.getElementById('check-telegram-btn').innerHTML = '<i class="fas fa-sync-alt"></i> Перепроверить';
+    const telegramStatusBadge = document.getElementById('telegram-status-badge');
+    const telegramLastnameCheck = document.getElementById('telegram-lastname-check');
+    const telegramBioCheck = document.getElementById('telegram-bio-check');
+    const checkTelegramBtn = document.getElementById('check-telegram-btn');
+    
+    if (telegramStatus && telegramStatus.verified) {
+        if (telegramStatusBadge) telegramStatusBadge.innerHTML = '<span class="badge success">Проверено</span>';
+        if (telegramLastnameCheck) telegramLastnameCheck.className = 'fas fa-check-circle success';
+        if (telegramBioCheck) telegramBioCheck.className = 'fas fa-check-circle success';
+        if (checkTelegramBtn) checkTelegramBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Перепроверить';
     } else {
-        document.getElementById('telegram-status-badge').innerHTML = '<span class="badge pending">Не проверено</span>';
-        document.getElementById('telegram-lastname-check').className = 'fas fa-times-circle';
-        document.getElementById('telegram-bio-check').className = 'fas fa-times-circle';
-        document.getElementById('check-telegram-btn').innerHTML = '<i class="fas fa-sync-alt"></i> Проверить';
+        if (telegramStatusBadge) telegramStatusBadge.innerHTML = '<span class="badge pending">Не проверено</span>';
+        if (telegramLastnameCheck) telegramLastnameCheck.className = 'fas fa-times-circle';
+        if (telegramBioCheck) telegramBioCheck.className = 'fas fa-times-circle';
+        if (checkTelegramBtn) checkTelegramBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Проверить';
     }
     
     // Steam
-    if (steamStatus?.verified) {
-        document.getElementById('steam-status-badge').innerHTML = '<span class="badge success">Проверено</span>';
-        document.getElementById('check-steam-btn').innerHTML = '<i class="fas fa-sync-alt"></i> Перепроверить';
+    const steamStatusBadge = document.getElementById('steam-status-badge');
+    const checkSteamBtn = document.getElementById('check-steam-btn');
+    const steamLevel = document.getElementById('steam-level');
+    const steamGames = document.getElementById('steam-games');
+    const steamBadges = document.getElementById('steam-badges');
+    
+    if (steamStatus && steamStatus.verified) {
+        if (steamStatusBadge) steamStatusBadge.innerHTML = '<span class="badge success">Проверено</span>';
+        if (checkSteamBtn) checkSteamBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Перепроверить';
         
         // Обновляем Steam статистику
-        document.getElementById('steam-level').textContent = steamStatus.level || '-';
-        document.getElementById('steam-games').textContent = steamStatus.game_count || '-';
-        document.getElementById('steam-badges').textContent = steamStatus.badges_count || '-';
+        if (steamLevel) steamLevel.textContent = steamStatus.level || '-';
+        if (steamGames) steamGames.textContent = steamStatus.game_count || '-';
+        if (steamBadges) steamBadges.textContent = steamStatus.badges_count || '-';
     } else {
-        document.getElementById('steam-status-badge').innerHTML = '<span class="badge pending">Не проверено</span>';
-        document.getElementById('check-steam-btn').innerHTML = '<i class="fas fa-sync-alt"></i> Проверить';
+        if (steamStatusBadge) steamStatusBadge.innerHTML = '<span class="badge pending">Не проверено</span>';
+        if (checkSteamBtn) checkSteamBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Проверить';
     }
 }
 
@@ -1180,7 +1209,7 @@ async function checkTelegramProfile() {
 // Функция проверки Steam профиля
 async function checkSteamProfile() {
     const steamInput = document.getElementById('steam-profile-input');
-    const steamUrl = steamInput?.value.trim();
+    const steamUrl = steamInput ? steamInput.value.trim() : '';
     
     if (!steamUrl && !enhancedEarnState.steamVerified) {
         showToast('Ошибка', 'Введите ссылку на Steam профиль', 'warning');
@@ -1200,9 +1229,13 @@ async function checkSteamProfile() {
             }
             
             // Обновляем Steam статистику
-            document.getElementById('steam-level').textContent = response.level;
-            document.getElementById('steam-games').textContent = response.game_count;
-            document.getElementById('steam-badges').textContent = response.badges_count;
+            const steamLevel = document.getElementById('steam-level');
+            const steamGames = document.getElementById('steam-games');
+            const steamBadges = document.getElementById('steam-badges');
+            
+            if (steamLevel) steamLevel.textContent = response.level;
+            if (steamGames) steamGames.textContent = response.game_count;
+            if (steamBadges) steamBadges.textContent = response.badges_count;
             
             // Обновляем статус
             enhancedEarnState.steamVerified = response.verified;
@@ -1256,10 +1289,16 @@ async function inviteFriend() {
             // Обновляем пассивный доход если активирован
             if (response.passive_income_activated) {
                 enhancedEarnState.passiveIncomePercent = response.passive_income_percent;
-                document.getElementById('current-passive-percent').textContent = `${response.passive_income_percent}%`;
-                document.getElementById('passive-income-status').textContent = 'Активен';
-                document.getElementById('passive-income-status').className = 'badge success';
-                document.getElementById('passive-income-card').classList.add('pulse');
+                const currentPassivePercent = document.getElementById('current-passive-percent');
+                const passiveIncomeStatus = document.getElementById('passive-income-status');
+                const passiveIncomeCard = document.getElementById('passive-income-card');
+                
+                if (currentPassivePercent) currentPassivePercent.textContent = `${response.passive_income_percent}%`;
+                if (passiveIncomeStatus) {
+                    passiveIncomeStatus.textContent = 'Активен';
+                    passiveIncomeStatus.className = 'badge success';
+                }
+                if (passiveIncomeCard) passiveIncomeCard.classList.add('pulse');
             }
             
             // Обновляем данные
@@ -1325,18 +1364,34 @@ function showRewardNotification(title, amount) {
 // Функция инициализации улучшенного заработка
 function initEnhancedEarning() {
     // Обновляем обработчики событий
-    document.getElementById('check-telegram-btn')?.addEventListener('click', function() { 
-        debounce(checkTelegramProfile); 
-    });
-    document.getElementById('check-steam-btn')?.addEventListener('click', function() { 
-        debounce(checkSteamProfile); 
-    });
-    document.getElementById('invite-friend-btn')?.addEventListener('click', function() { 
-        debounce(inviteFriend); 
-    });
-    document.getElementById('copy-referral-link-btn')?.addEventListener('click', function() { 
-        debounce(copyEnhancedReferralLink); 
-    });
+    const checkTelegramBtn = document.getElementById('check-telegram-btn');
+    const checkSteamBtn = document.getElementById('check-steam-btn');
+    const inviteFriendBtn = document.getElementById('invite-friend-btn');
+    const copyReferralLinkBtn = document.getElementById('copy-referral-link-btn');
+    
+    if (checkTelegramBtn) {
+        checkTelegramBtn.addEventListener('click', function() { 
+            debounce(checkTelegramProfile); 
+        });
+    }
+    
+    if (checkSteamBtn) {
+        checkSteamBtn.addEventListener('click', function() { 
+            debounce(checkSteamProfile); 
+        });
+    }
+    
+    if (inviteFriendBtn) {
+        inviteFriendBtn.addEventListener('click', function() { 
+            debounce(inviteFriend); 
+        });
+    }
+    
+    if (copyReferralLinkBtn) {
+        copyReferralLinkBtn.addEventListener('click', function() { 
+            debounce(copyEnhancedReferralLink); 
+        });
+    }
     
     // Steam ввод по Enter
     const steamInput = document.getElementById('steam-profile-input');
