@@ -390,140 +390,6 @@ body {
     font-size: 24px;
 }
 
-/* ===== РАЗДЕЛ ПРИГЛАШЕНИЯ ДРУЗЕЙ ===== */
-.invite-friend-section {
-    background: var(--dark-bg);
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 1000;
-    padding: 20px;
-    overflow-y: auto;
-    animation: slideIn 0.3s ease;
-}
-
-.invite-container {
-    max-width: 500px;
-    margin: 0 auto;
-}
-
-.invite-methods {
-    display: grid;
-    gap: 15px;
-    margin-bottom: 30px;
-}
-
-.invite-method-card {
-    background: var(--dark-card);
-    border-radius: var(--border-radius);
-    padding: 20px;
-    display: flex;
-    align-items: center;
-    gap: 15px;
-    cursor: pointer;
-    transition: var(--transition);
-    border: 2px solid transparent;
-}
-
-.invite-method-card:hover {
-    border-color: var(--primary-color);
-    transform: translateY(-5px);
-    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
-}
-
-.invite-icon {
-    font-size: 32px;
-    color: var(--primary-color);
-}
-
-.invite-info h4 {
-    font-size: 16px;
-    margin-bottom: 5px;
-}
-
-.invite-info p {
-    font-size: 14px;
-    color: var(--text-gray);
-}
-
-.invite-preview {
-    background: var(--dark-card);
-    border-radius: var(--border-radius);
-    padding: 20px;
-}
-
-.invite-preview h4 {
-    margin-bottom: 15px;
-    font-size: 18px;
-}
-
-.referral-link-box {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 20px;
-}
-
-#referral-link-display {
-    flex: 1;
-    background: rgba(255, 255, 255, 0.1);
-    border: 2px solid var(--primary-color);
-    border-radius: var(--border-radius);
-    padding: 12px 15px;
-    color: white;
-    font-size: 14px;
-    outline: none;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.copy-btn {
-    background: var(--primary-color);
-    color: white;
-    border: none;
-    width: 44px;
-    height: 44px;
-    border-radius: var(--border-radius);
-    font-size: 18px;
-    cursor: pointer;
-    transition: var(--transition);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.copy-btn:hover {
-    background: var(--primary-dark);
-    transform: scale(1.05);
-}
-
-.invite-stats {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 15px;
-}
-
-.invite-stat {
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: var(--border-radius);
-    padding: 15px;
-    text-align: center;
-}
-
-.invite-stat .stat-label {
-    font-size: 12px;
-    color: var(--text-gray);
-    margin-bottom: 5px;
-}
-
-.invite-stat .stat-value {
-    font-size: 24px;
-    font-weight: bold;
-    color: #ffd700;
-}
-
 /* ===== CASES ===== */
 .cases-container {
     display: grid;
@@ -1170,12 +1036,16 @@ body {
     color: var(--primary-color);
 }
 
-.copy-link-btn {
-    width: 100%;
-    background: var(--primary-color);
-    color: white;
-    border: none;
-    padding: 10px;
+/* Кнопки для реферальной ссылки */
+.referral-buttons {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.copy-link-btn, .share-telegram-btn {
+    flex: 1;
+    padding: 10px 12px;
     border-radius: var(--border-radius);
     font-weight: 600;
     cursor: pointer;
@@ -1184,11 +1054,33 @@ body {
     align-items: center;
     justify-content: center;
     gap: 8px;
+    border: none;
+    font-size: 13px;
+}
+
+.copy-link-btn {
+    background: var(--primary-color);
+    color: white;
 }
 
 .copy-link-btn:hover {
     background: var(--primary-dark);
     transform: translateY(-2px);
+}
+
+.share-telegram-btn {
+    background: #0088cc;
+    color: white;
+    white-space: nowrap;
+}
+
+.share-telegram-btn:hover {
+    background: #0077b3;
+    transform: translateY(-2px);
+}
+
+.share-telegram-btn i {
+    font-size: 16px;
 }
 
 /* Milestone информация */
@@ -1416,6 +1308,11 @@ body {
     opacity: 0.5;
     cursor: not-allowed;
     transform: none;
+}
+
+.earn-btn.large.warning {
+    background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%);
+    animation: pulse 2s infinite;
 }
 
 .info-text {
@@ -1718,6 +1615,200 @@ body {
     animation: pulseGlow 2s infinite;
 }
 
+/* ===== МОДАЛЬНОЕ ОКНО ДЛЯ РЕФЕРАЛЬНОГО КОДА ===== */
+.invite-friend-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    padding: 20px;
+}
+
+.invite-friend-modal.hidden {
+    display: none;
+}
+
+.invite-modal-content {
+    background: var(--dark-card);
+    border-radius: var(--border-radius);
+    padding: 25px;
+    max-width: 400px;
+    width: 100%;
+    animation: popIn 0.3s ease;
+}
+
+.invite-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.invite-modal-header h3 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 18px;
+}
+
+.close-modal-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: var(--text-gray);
+    font-size: 24px;
+    cursor: pointer;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: var(--transition);
+}
+
+.close-modal-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+}
+
+.invite-form {
+    margin-top: 10px;
+}
+
+.invite-form p {
+    margin-bottom: 20px;
+    color: var(--text-gray);
+    line-height: 1.5;
+}
+
+.form-group {
+    margin-bottom: 25px;
+}
+
+.form-group label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    font-weight: 600;
+}
+
+.form-group label i {
+    color: var(--primary-color);
+}
+
+#friend-referral-code {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.1);
+    border: 2px solid var(--primary-color);
+    border-radius: var(--border-radius);
+    padding: 12px 15px;
+    color: white;
+    font-size: 16px;
+    outline: none;
+    transition: var(--transition);
+}
+
+#friend-referral-code:focus {
+    border-color: var(--secondary-color);
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.3);
+}
+
+.hint-text {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--text-gray);
+    line-height: 1.4;
+}
+
+.hint-text i {
+    color: var(--info-color);
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+
+.timer-warning {
+    background: rgba(237, 137, 54, 0.1);
+    border: 1px solid rgba(237, 137, 54, 0.3);
+    border-radius: var(--border-radius);
+    padding: 10px 15px;
+    margin: 15px 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #ed8936;
+    font-size: 14px;
+}
+
+.timer-warning i {
+    font-size: 16px;
+}
+
+#time-left {
+    font-weight: bold;
+    color: #ffd700;
+}
+
+.invite-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.invite-cancel-btn {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-gray);
+    border: none;
+    padding: 12px;
+    border-radius: var(--border-radius);
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.invite-cancel-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+}
+
+.invite-submit-btn {
+    flex: 2;
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+    color: white;
+    border: none;
+    padding: 12px;
+    border-radius: var(--border-radius);
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.invite-submit-btn:hover {
+    background: linear-gradient(135deg, var(--primary-dark) 0%, var(--secondary-color) 100%);
+    transform: translateY(-2px);
+}
+
+@keyframes popIn {
+    0% { transform: scale(0.9); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
 /* ===== SIDE MENU ===== */
 .side-menu {
     position: fixed;
@@ -1978,6 +2069,19 @@ body {
     
     .reward-notification .reward-amount {
         font-size: 36px;
+    }
+    
+    .referral-buttons {
+        flex-direction: column;
+    }
+    
+    .share-telegram-btn {
+        font-size: 12px;
+        padding: 10px 8px;
+    }
+    
+    .earn-btn.large {
+        font-size: 14px;
     }
 }
 
