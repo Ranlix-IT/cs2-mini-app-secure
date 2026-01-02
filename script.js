@@ -11,6 +11,7 @@ let appState = {
 };
 
 const API_BASE_URL = "https://cs2-mini-app.onrender.com";
+const APP_VERSION = "2.0.1";
 
 // Улучшенная система заработка
 let enhancedEarnState = {
@@ -25,6 +26,9 @@ let enhancedEarnState = {
 // ===== ИНИЦИАЛИЗАЦИЯ =====
 document.addEventListener('DOMContentLoaded', function() {
     console.log("🚀 CS2 Skin Bot запускается...");
+    
+    // Проверка обновлений
+    checkForUpdates();
     
     initializeTelegramApp();
     setupEventListeners();
@@ -47,15 +51,149 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Регистрация Service Worker для PWA
     registerServiceWorker();
+    
+    // Запуск периодической проверки обновлений
+    startUpdateChecker();
 });
+
+// ===== АВТОМАТИЧЕСКОЕ ОБНОВЛЕНИЕ =====
+function checkForUpdates() {
+    const lastVersion = localStorage.getItem('app_version');
+    const lastUpdate = localStorage.getItem('last_update');
+    const now = Date.now();
+    
+    // Если прошло больше 24 часов с последнего обновления
+    if (!lastUpdate || (now - parseInt(lastUpdate)) > 24 * 60 * 60 * 1000) {
+        console.log('🔄 Проверка обновлений...');
+        
+        // Очистка устаревшего кеша
+        clearOldCache();
+        
+        // Обновляем версию
+        localStorage.setItem('app_version', APP_VERSION);
+        localStorage.setItem('last_update', now.toString());
+        
+        // Уведомляем о новом запуске
+        console.log(`✅ Приложение v${APP_VERSION} запущено`);
+    }
+}
+
+function clearOldCache() {
+    // Очищаем старые данные localStorage (кроме важных)
+    const keepKeys = ['user_preferences', 'app_version', 'last_update'];
+    Object.keys(localStorage).forEach(key => {
+        if (!keepKeys.includes(key) && !key.startsWith('telegram_')) {
+            localStorage.removeItem(key);
+        }
+    });
+    
+    // Очищаем sessionStorage
+    sessionStorage.clear();
+    
+    // Запрашиваем обновление Service Worker
+    updateServiceWorker();
+}
+
+function updateServiceWorker() {
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(registrations => {
+            registrations.forEach(registration => {
+                registration.update();
+            });
+        });
+    }
+}
+
+function startUpdateChecker() {
+    // Проверяем обновления каждые 30 минут
+    setInterval(() => {
+        checkServerForUpdates();
+    }, 30 * 60 * 1000);
+    
+    // Проверяем при возвращении на вкладку
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+            quickUpdateCheck();
+        }
+    });
+}
+
+async function checkServerForUpdates() {
+    try {
+        const response = await fetch('/api/health', {
+            headers: { 'Cache-Control': 'no-cache' }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            console.log('✅ Сервер доступен, версия:', data.version);
+            
+            // Проверяем версию API
+            if (data.version && data.version !== "2.0.0") {
+                showUpdateNotification('Доступно обновление API', 'Перезагрузите приложение для получения новых функций');
+            }
+        }
+    } catch (error) {
+        console.log('Проверка обновлений:', error);
+    }
+}
+
+function quickUpdateCheck() {
+    // Быстрая проверка - просто перезагружаем данные
+    if (appState.user) {
+        loadUserData();
+        loadEarnData();
+    }
+}
+
+function showUpdateNotification(title, message) {
+    // Показываем только если нет других уведомлений
+    if (!document.querySelector('.update-notification')) {
+        const notification = document.createElement('div');
+        notification.className = 'update-notification';
+        notification.innerHTML = `
+            <div class="update-content">
+                <i class="fas fa-sync-alt"></i>
+                <div class="update-text">
+                    <h4>${title}</h4>
+                    <p>${message}</p>
+                </div>
+                <button class="update-btn" onclick="this.closest('.update-notification').remove();">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        `;
+        
+        document.body.appendChild(notification);
+        
+        // Автоудаление через 10 секунд
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.remove();
+            }
+        }, 10000);
+    }
+}
 
 // Регистрация Service Worker
 function registerServiceWorker() {
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', function() {
-            navigator.serviceWorker.register('/service-worker.js').then(
+            navigator.serviceWorker.register('/service-worker.js?v=' + APP_VERSION).then(
                 function(registration) {
                     console.log('✅ ServiceWorker зарегистрирован: ', registration.scope);
+                    
+                    // Слушаем сообщения от Service Worker
+                    navigator.serviceWorker.addEventListener('message', event => {
+                        if (event.data.type === 'NEW_VERSION') {
+                            console.log('🔄 Новая версия Service Worker:', event.data.version);
+                            showUpdateNotification('Обновление загружено', 'Приложение будет перезагружено');
+                            setTimeout(() => window.location.reload(), 3000);
+                        }
+                    });
+                    
+                    // Проверяем обновления
+                    registration.update();
                 },
                 function(err) {
                     console.log('❌ Ошибка регистрации ServiceWorker: ', err);
@@ -97,7 +235,6 @@ function initializeTelegramApp() {
             loadUserData();
         } else {
             console.warn("⚠️ Данные пользователя Telegram не получены");
-            console.log("📱 Полный initDataUnsafe:", JSON.stringify(tg.initDataUnsafe));
             useTestData();
         }
         
@@ -225,7 +362,6 @@ function setupEventListeners() {
     // Клик на всей карточке кейса
     document.querySelectorAll('.case-card').forEach(card => {
         card.addEventListener('click', function(e) {
-            // Если клик не на кнопке "Открыть"
             if (!e.target.closest('.open-case-btn')) {
                 const price = this.getAttribute('data-price');
                 if (price) {
@@ -243,7 +379,7 @@ function setupEventListeners() {
         });
     }
     
-    // Кнопки назад в секциях - с дебаунсом
+    // Кнопки назад в секциях
     document.querySelectorAll('.page-section .back-btn').forEach(btn => {
         btn.addEventListener('click', function(e) {
             e.preventDefault();
@@ -259,18 +395,6 @@ function setupEventListeners() {
             e.preventDefault();
             e.stopPropagation();
             debounce(closeCaseOpening);
-        });
-    }
-    
-    // Также закрытие по клику на overlay (фон) анимации
-    const caseOpening = document.getElementById('case-opening');
-    if (caseOpening) {
-        caseOpening.addEventListener('click', function(e) {
-            if (e.target === this) { // Клик на самом overlay, а не на содержимом
-                e.preventDefault();
-                e.stopPropagation();
-                debounce(closeCaseOpening);
-            }
         });
     }
     
@@ -338,25 +462,14 @@ function setupEventListeners() {
             e.preventDefault();
             const filter = this.getAttribute('data-filter');
             if (filter) {
-                // Убираем активный класс со всех кнопок
                 document.querySelectorAll('.filter-btn').forEach(b => {
                     b.classList.remove('active');
                 });
-                // Добавляем активный класс на текущую кнопку
                 this.classList.add('active');
-                // Применяем фильтр
                 filterInventory(filter);
             }
         });
     });
-    
-    // Дополнительные кнопки
-    const withdrawAllBtn = document.getElementById('withdraw-all-btn');
-    if (withdrawAllBtn) {
-        withdrawAllBtn.addEventListener('click', function() {
-            showToast('Скоро!', 'Функция в разработке', 'info');
-        });
-    }
     
     console.log("✅ Обработчики событий установлены");
 }
@@ -365,29 +478,24 @@ function setupEventListeners() {
 function openSection(sectionName) {
     console.log(`📱 Открываем раздел: ${sectionName}`);
     
-    // Скрываем основной контент (бонус, быстрые действия)
     const mainElements = document.querySelectorAll('.main-content > *:not(.page-section)');
     mainElements.forEach(element => {
         element.style.display = 'none';
     });
     
-    // Скрываем все секции
     document.querySelectorAll('.page-section').forEach(section => {
         section.classList.add('hidden');
         section.style.display = 'none';
     });
     
-    // Показываем выбранную секцию
     const targetSection = document.getElementById(`${sectionName}-section`);
     if (targetSection) {
         targetSection.classList.remove('hidden');
         targetSection.style.display = 'block';
         
-        // Прокручиваем вверх
         window.scrollTo(0, 0);
         targetSection.scrollTop = 0;
         
-        // Загружаем данные если нужно
         if (sectionName === 'inventory') {
             updateInventoryUI();
         } else if (sectionName === 'promo') {
@@ -397,34 +505,28 @@ function openSection(sectionName) {
         }
     }
     
-    // Закрываем меню если открыто
     toggleMenu(false);
 }
 
 function backToMain() {
     console.log("🔙 Возврат на главную");
     
-    // Только возвращаем на главную, НЕ закрываем анимацию кейса
-    // Показываем основной контент
     const mainElements = document.querySelectorAll('.main-content > *:not(.page-section)');
     mainElements.forEach(element => {
         element.style.display = 'block';
     });
     
-    // Скрываем все секции
     document.querySelectorAll('.page-section').forEach(section => {
         section.classList.add('hidden');
         section.style.display = 'none';
     });
     
-    // Убедимся, что анимация кейса тоже скрыта
     const caseOpening = document.getElementById('case-opening');
     if (caseOpening) {
         caseOpening.classList.add('hidden');
         caseOpening.style.display = 'none';
     }
     
-    // Прокручиваем вверх
     window.scrollTo(0, 0);
 }
 
@@ -451,18 +553,16 @@ async function apiRequest(endpoint, method = 'GET', data = null) {
     try {
         const headers = {
             'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache'
         };
         
-        // Добавляем авторизацию из Telegram если есть
         if (tg && tg.initData) {
             headers['Authorization'] = `tma ${tg.initData}`;
             console.log('🔐 Добавляем Telegram авторизацию');
         } else if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
-            // Если нет initData, но есть данные пользователя, используем их для демо
             console.log('⚠️ Нет initData, используем демо-режим для API');
             return simulateAPIResponse(endpoint, method, data);
         } else {
-            // Если нет данных Telegram, используем демо-режим
             console.log('⚠️ Нет данных Telegram, используем демо-режим');
             return simulateAPIResponse(endpoint, method, data);
         }
@@ -496,7 +596,6 @@ async function apiRequest(endpoint, method = 'GET', data = null) {
         
     } catch (error) {
         console.error(`❌ API Error (${endpoint}):`, error);
-        // В случае ошибки используем демо-режим
         return simulateAPIResponse(endpoint, method, data);
     }
 }
@@ -542,7 +641,7 @@ function simulateAPIResponse(endpoint, method, data) {
             
         case '/api/daily-bonus':
             if (method === 'POST') {
-                const bonusAmount = Math.floor(Math.random() * 100) + 50; // 50-150
+                const bonusAmount = Math.floor(Math.random() * 100) + 50;
                 appState.balance += bonusAmount;
                 appState.dailyBonusAvailable = false;
                 return Promise.resolve({
@@ -561,7 +660,6 @@ function simulateAPIResponse(endpoint, method, data) {
                 if (appState.balance >= price) {
                     appState.balance -= price;
                     
-                    // Генерируем случайный предмет
                     const items = [
                         { name: 'Наклейка | ENCE |', price: Math.floor(price * 0.8), type: 'sticker', rarity: 'common' },
                         { name: 'FAMAS | Колония', price: Math.floor(price * 1.2), type: 'weapon', rarity: 'uncommon' },
@@ -813,7 +911,6 @@ function simulateAPIResponse(endpoint, method, data) {
             });
     }
     
-    // По умолчанию возвращаем успех
     return Promise.resolve({
         success: true,
         message: "Демо-режим: операция выполнена",
@@ -828,7 +925,6 @@ async function loadUserData() {
         const response = await apiRequest('/api/user');
         
         if (response.success && !response.demo_mode) {
-            // Обновляем только если не демо-режим
             appState.balance = response.user.balance;
             appState.inventory = response.user.inventory || [];
             appState.dailyBonusAvailable = response.daily_bonus_available;
@@ -836,7 +932,6 @@ async function loadUserData() {
             appState.tradeLink = response.user.trade_link;
             appState.referralsCount = response.user.referrals_count;
             
-            // Обновляем улучшенный заработок
             if (response.telegram_profile_status) {
                 enhancedEarnState.telegramVerified = response.telegram_profile_status.verified;
             }
@@ -850,13 +945,11 @@ async function loadUserData() {
             
             showToast('Добро пожаловать!', `Баланс: ${appState.balance} баллов`, 'success');
         } else if (response.demo_mode) {
-            // Уже используем демо данные
             console.log('🎭 Используем демо-данные');
         }
         
     } catch (error) {
         console.error('❌ Ошибка загрузки данных:', error);
-        // Уже используем тестовые данные
     }
 }
 
@@ -987,7 +1080,6 @@ async function setTradeLink() {
 
 async function withdrawItem(itemId) {
     try {
-        // Сначала проверяем трейд ссылку
         if (!appState.tradeLink) {
             openSection('profile');
             showToast('Требуется ссылка', 'Укажите трейд ссылку в профиле', 'warning');
@@ -999,7 +1091,6 @@ async function withdrawItem(itemId) {
         });
         
         if (response.success) {
-            // Обновляем инвентарь
             appState.inventory = appState.inventory.filter(item => item.id !== itemId);
             updateInventoryUI();
             
@@ -1028,8 +1119,6 @@ async function loadAvailablePromos() {
 }
 
 // ===== УЛУЧШЕННАЯ СИСТЕМА ЗАРАБОТКА =====
-
-// Функция загрузки данных заработка
 async function loadEarnData() {
     try {
         const response = await apiRequest('/api/earn/stats');
@@ -1037,7 +1126,6 @@ async function loadEarnData() {
         if (response.success) {
             const stats = response.stats;
             
-            // Обновляем статистику с проверкой существования элементов
             const totalEarned = document.getElementById('total-earned');
             const totalInvites = document.getElementById('total-invites');
             const telegramEarned = document.getElementById('telegram-earned');
@@ -1048,7 +1136,6 @@ async function loadEarnData() {
             if (telegramEarned) telegramEarned.textContent = stats.from_telegram;
             if (steamEarned) steamEarned.textContent = stats.from_steam;
             
-            // Обновляем прогресс-бар
             if (response.progress_percent !== undefined) {
                 const progressBar = document.getElementById('referral-progress-bar');
                 const currentInvites = document.getElementById('current-invites');
@@ -1066,24 +1153,20 @@ async function loadEarnData() {
                 }
             }
             
-            // Обновляем текущий уровень
             if (response.next_milestone) {
                 const currentTier = document.getElementById('current-tier');
                 if (currentTier) currentTier.textContent = response.next_milestone.badge || 'Новичок';
             }
             
-            // Сохраняем состояние
             enhancedEarnState.nextMilestone = response.next_milestone;
             enhancedEarnState.progressPercent = response.progress_percent;
             enhancedEarnState.telegramVerified = (response.telegram_status && response.telegram_status.verified) || false;
             enhancedEarnState.steamVerified = (response.steam_status && response.steam_status.verified) || false;
             enhancedEarnState.passiveIncomePercent = stats.passive_income_percent || 0;
             
-            // Обновляем статусы
             updateProfileStatuses(response.telegram_status, response.steam_status);
         }
         
-        // Загружаем реферальную информацию
         await loadReferralInfo();
         
     } catch (error) {
@@ -1091,7 +1174,6 @@ async function loadEarnData() {
     }
 }
 
-// Функция загрузки реферальной информации
 async function loadReferralInfo() {
     try {
         const response = await apiRequest('/api/earn/referral-info');
@@ -1104,7 +1186,6 @@ async function loadReferralInfo() {
                 linkText.textContent = response.referral_link;
             }
             
-            // Обновляем процент пассивного дохода
             const currentPassivePercent = document.getElementById('current-passive-percent');
             const passiveIncomeStatus = document.getElementById('passive-income-status');
             const passiveIncomeCard = document.getElementById('passive-income-card');
@@ -1127,9 +1208,7 @@ async function loadReferralInfo() {
     }
 }
 
-// Функция обновления статусов профилей
 function updateProfileStatuses(telegramStatus, steamStatus) {
-    // Telegram
     const telegramStatusBadge = document.getElementById('telegram-status-badge');
     const telegramLastnameCheck = document.getElementById('telegram-lastname-check');
     const telegramBioCheck = document.getElementById('telegram-bio-check');
@@ -1147,7 +1226,6 @@ function updateProfileStatuses(telegramStatus, steamStatus) {
         if (checkTelegramBtn) checkTelegramBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Проверить';
     }
     
-    // Steam
     const steamStatusBadge = document.getElementById('steam-status-badge');
     const checkSteamBtn = document.getElementById('check-steam-btn');
     const steamLevel = document.getElementById('steam-level');
@@ -1158,7 +1236,6 @@ function updateProfileStatuses(telegramStatus, steamStatus) {
         if (steamStatusBadge) steamStatusBadge.innerHTML = '<span class="badge success">Проверено</span>';
         if (checkSteamBtn) checkSteamBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Перепроверить';
         
-        // Обновляем Steam статистику
         if (steamLevel) steamLevel.textContent = steamStatus.level || '-';
         if (steamGames) steamGames.textContent = steamStatus.game_count || '-';
         if (steamBadges) steamBadges.textContent = steamStatus.badges_count || '-';
@@ -1168,7 +1245,6 @@ function updateProfileStatuses(telegramStatus, steamStatus) {
     }
 }
 
-// Функция проверки Telegram профиля
 async function checkTelegramProfile() {
     try {
         const response = await apiRequest('/api/earn/check-telegram', 'POST', {
@@ -1183,7 +1259,6 @@ async function checkTelegramProfile() {
                 updateUserInfo();
             }
             
-            // Обновляем статус
             enhancedEarnState.telegramVerified = response.verified;
             updateProfileStatuses(
                 { verified: response.verified },
@@ -1196,7 +1271,6 @@ async function checkTelegramProfile() {
                 response.verified ? 'success' : 'warning'
             );
             
-            // Перезагружаем данные
             await loadEarnData();
         }
         
@@ -1206,7 +1280,6 @@ async function checkTelegramProfile() {
     }
 }
 
-// Функция проверки Steam профиля
 async function checkSteamProfile() {
     const steamInput = document.getElementById('steam-profile-input');
     const steamUrl = steamInput ? steamInput.value.trim() : '';
@@ -1228,7 +1301,6 @@ async function checkSteamProfile() {
                 updateUserInfo();
             }
             
-            // Обновляем Steam статистику
             const steamLevel = document.getElementById('steam-level');
             const steamGames = document.getElementById('steam-games');
             const steamBadges = document.getElementById('steam-badges');
@@ -1237,7 +1309,6 @@ async function checkSteamProfile() {
             if (steamGames) steamGames.textContent = response.game_count;
             if (steamBadges) steamBadges.textContent = response.badges_count;
             
-            // Обновляем статус
             enhancedEarnState.steamVerified = response.verified;
             updateProfileStatuses(
                 { verified: enhancedEarnState.telegramVerified },
@@ -1255,7 +1326,6 @@ async function checkSteamProfile() {
                 response.verified ? 'success' : 'warning'
             );
             
-            // Перезагружаем данные
             await loadEarnData();
         }
         
@@ -1265,7 +1335,6 @@ async function checkSteamProfile() {
     }
 }
 
-// Функция приглашения друга
 async function inviteFriend() {
     try {
         const response = await apiRequest('/api/earn/invite-friend', 'POST', {
@@ -1273,7 +1342,6 @@ async function inviteFriend() {
         });
         
         if (response.success) {
-            // Показываем уведомление о награде
             showRewardNotification('Друг приглашен!', response.base_reward);
             
             if (response.milestone_bonus > 0) {
@@ -1282,11 +1350,9 @@ async function inviteFriend() {
                 }, 1500);
             }
             
-            // Обновляем баланс
             appState.balance = response.new_balance;
             updateUserInfo();
             
-            // Обновляем пассивный доход если активирован
             if (response.passive_income_activated) {
                 enhancedEarnState.passiveIncomePercent = response.passive_income_percent;
                 const currentPassivePercent = document.getElementById('current-passive-percent');
@@ -1301,7 +1367,6 @@ async function inviteFriend() {
                 if (passiveIncomeCard) passiveIncomeCard.classList.add('pulse');
             }
             
-            // Обновляем данные
             await loadEarnData();
             
             showToast('Успех!', response.message, 'success');
@@ -1313,7 +1378,6 @@ async function inviteFriend() {
     }
 }
 
-// Функция копирования реферальной ссылки
 function copyEnhancedReferralLink() {
     if (!enhancedEarnState.referralLink) {
         showToast('Ошибка', 'Ссылка не загружена', 'error');
@@ -1332,9 +1396,7 @@ function copyEnhancedReferralLink() {
     }
 }
 
-// Функция показа уведомления о награде
 function showRewardNotification(title, amount) {
-    // Скрываем предыдущие уведомления
     const existingNotification = document.querySelector('.reward-notification');
     if (existingNotification) {
         existingNotification.remove();
@@ -1353,7 +1415,6 @@ function showRewardNotification(title, amount) {
     
     document.body.appendChild(notification);
     
-    // Автоматическое скрытие через 5 секунд
     setTimeout(() => {
         if (notification.parentNode) {
             notification.remove();
@@ -1361,9 +1422,7 @@ function showRewardNotification(title, amount) {
     }, 5000);
 }
 
-// Функция инициализации улучшенного заработка
 function initEnhancedEarning() {
-    // Обновляем обработчики событий
     const checkTelegramBtn = document.getElementById('check-telegram-btn');
     const checkSteamBtn = document.getElementById('check-steam-btn');
     const inviteFriendBtn = document.getElementById('invite-friend-btn');
@@ -1393,7 +1452,6 @@ function initEnhancedEarning() {
         });
     }
     
-    // Steam ввод по Enter
     const steamInput = document.getElementById('steam-profile-input');
     if (steamInput) {
         steamInput.addEventListener('keypress', function(e) {
@@ -1407,19 +1465,16 @@ function initEnhancedEarning() {
 // ===== UI ФУНКЦИИ =====
 function updateUserInfo() {
     if (appState.user) {
-        // Обновляем имя в заголовке
         const userNameElement = document.getElementById('user-name');
         if (userNameElement) {
             userNameElement.textContent = appState.user.firstName;
         }
         
-        // Обновляем баланс
         const balanceElement = document.getElementById('balance');
         if (balanceElement) {
             balanceElement.textContent = appState.balance;
         }
         
-        // Обновляем меню
         const menuUsername = document.getElementById('menu-username');
         const menuBalance = document.getElementById('menu-balance');
         if (menuUsername) menuUsername.textContent = appState.user.firstName;
@@ -1434,7 +1489,6 @@ function updateInventoryUI() {
     
     if (!inventoryList) return;
     
-    // Очищаем список
     inventoryList.innerHTML = '';
     
     if (appState.inventory.length === 0) {
@@ -1456,10 +1510,8 @@ function updateInventoryUI() {
         return;
     }
     
-    // Считаем статистику
     let totalPrice = 0;
     
-    // Добавляем предметы
     appState.inventory.forEach((item, index) => {
         totalPrice += item.price || 0;
         
@@ -1484,7 +1536,6 @@ function updateInventoryUI() {
         inventoryList.appendChild(itemElement);
     });
     
-    // Обновляем статистику
     if (totalItems) totalItems.textContent = appState.inventory.length;
     if (totalValue) totalValue.textContent = totalPrice;
 }
@@ -1500,11 +1551,6 @@ function getTypeIcon(type) {
 }
 
 function filterInventory(filterType) {
-    const inventoryList = document.getElementById('inventory-list');
-    if (!inventoryList) return;
-    
-    // В реальном приложении здесь была бы фильтрация
-    // Для демо просто показываем сообщение
     if (filterType !== 'all') {
         showToast('Фильтр', `Показываем предметы типа: ${filterType}`, 'info');
     }
@@ -1566,8 +1612,7 @@ function updateBonusTimer() {
         bonusBtn.innerHTML = '<i class="fas fa-gift"></i> Забрать';
         bonusBtn.style.opacity = '1';
     } else {
-        // Таймер для следующего бонуса (через 24 часа)
-        const nextBonusTime = Date.now() + 86400000; // 24 часа
+        const nextBonusTime = Date.now() + 86400000;
         const now = Date.now();
         const diff = nextBonusTime - now;
         
@@ -1600,7 +1645,6 @@ function showCaseOpening() {
         caseOpening.style.display = 'flex';
         openingText.textContent = 'Открываем кейс...';
         
-        // Скрываем список выигранных предметов
         const wonItem = document.getElementById('won-item');
         if (wonItem) {
             wonItem.innerHTML = '';
@@ -1659,7 +1703,6 @@ function showToast(title, message, type = 'info') {
     
     container.appendChild(toast);
     
-    // Удаляем через 5 секунд
     setTimeout(() => {
         toast.classList.add('hiding');
         setTimeout(() => {
@@ -1673,7 +1716,6 @@ function showToast(title, message, type = 'info') {
 function copyReferralLink() {
     const link = `https://t.me/rancasebot?start=${appState.referralCode}`;
     
-    // Пытаемся использовать современный Clipboard API
     if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(link)
             .then(() => showToast('Скопировано!', 'Реферальная ссылка скопирована', 'success'))
@@ -1682,7 +1724,6 @@ function copyReferralLink() {
                 fallbackCopy(link);
             });
     } else {
-        // Fallback для старых браузеров
         fallbackCopy(link);
     }
 }
@@ -1721,7 +1762,6 @@ function closeApp() {
 }
 
 // ===== ГЛОБАЛЬНЫЕ ФУНКЦИИ ДЛЯ HTML =====
-// Объявляем функции глобально для onclick атрибутов
 window.openSection = openSection;
 window.backToMain = backToMain;
 window.claimDailyBonus = claimDailyBonus;
@@ -1734,8 +1774,6 @@ window.closeCaseOpening = closeCaseOpening;
 window.withdrawItem = withdrawItem;
 window.closeApp = closeApp;
 window.filterInventory = filterInventory;
-
-// Функции улучшенного заработка
 window.checkTelegramProfile = checkTelegramProfile;
 window.checkSteamProfile = checkSteamProfile;
 window.inviteFriend = inviteFriend;
