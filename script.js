@@ -147,7 +147,7 @@ function useTestData() {
     ];
     
     appState.dailyBonusAvailable = true;
-    appState.referralCode = `ref_${appState.user.id}_${Date.now()}`;
+    appState.referralCode = `ref_${appState.user.id}_demo`;
     appState.referralsCount = 3;
     appState.tradeLink = "https://steamcommunity.com/tradeoffer/new/partner=123456789";
     
@@ -791,7 +791,7 @@ function simulateAPIResponse(endpoint, method, data) {
             return Promise.resolve({
                 success: true,
                 referral_code: appState.referralCode,
-                referral_link: `https://t.me/MeteoHinfoBot?start=${appState.referralCode}`,
+                referral_link: `https://t.me/rancasebot?start=${appState.referralCode}`,
                 total_invites: totalInvites,
                 referral_tier: 0,
                 current_milestone: null,
@@ -1671,7 +1671,7 @@ function showToast(title, message, type = 'info') {
 }
 
 function copyReferralLink() {
-    const link = `https://t.me/MeteoHinfoBot?start=${appState.referralCode}`;
+    const link = `https://t.me/rancasebot?start=${appState.referralCode}`;
     
     // Пытаемся использовать современный Clipboard API
     if (navigator.clipboard && navigator.clipboard.writeText) {
