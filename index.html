@@ -373,9 +373,14 @@
                             <div class="referral-link-box">
                                 <div class="referral-link-label">Ваша реферальная ссылка:</div>
                                 <div class="referral-link-value" id="referral-link-text">Загрузка...</div>
-                                <button class="copy-link-btn" id="copy-referral-link-btn">
-                                    <i class="fas fa-copy"></i> Копировать
-                                </button>
+                                <div class="referral-buttons">
+                                    <button class="copy-link-btn" id="copy-referral-link-btn">
+                                        <i class="fas fa-copy"></i> Копировать
+                                    </button>
+                                    <button class="share-telegram-btn" id="share-telegram-btn">
+                                        <i class="fab fa-telegram"></i> Поделиться в Telegram
+                                    </button>
+                                </div>
                             </div>
                             <div class="milestone-info">
                                 <div class="milestone-label">Следующая цель:</div>
@@ -383,9 +388,9 @@
                                 <div class="milestone-reward" id="next-milestone-reward">+1000 баллов</div>
                             </div>
                         </div>
-                        <div class="earn-card-footer">
-                            <button class="earn-btn large" onclick="openInviteFriendSection()">
-                                <i class="fas fa-user-plus"></i> Пригласить друга
+                        <div class="earn-card-footer" id="referral-code-section" style="display: none;">
+                            <button class="earn-btn large" id="referral-code-btn" onclick="showReferralCodeForm()">
+                                <i class="fas fa-key"></i> Ввести Реферальный код
                             </button>
                         </div>
                     </div>
@@ -703,6 +708,50 @@
                         <i class="fas fa-sign-out-alt"></i>
                         <span>Закрыть приложение</span>
                     </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Модальное окно для ввода реферального кода -->
+        <div id="invite-friend-modal" class="invite-friend-modal hidden">
+            <div class="invite-modal-content">
+                <div class="invite-modal-header">
+                    <h3><i class="fas fa-key"></i> Ввести Реферальный код</h3>
+                    <button class="close-modal-btn" onclick="closeInviteModal()">&times;</button>
+                </div>
+                
+                <div class="invite-form">
+                    <p id="referral-time-message">Введите реферальный код друга в течение <strong>5 минут</strong> после регистрации, чтобы получить 500 баллов</p>
+                    
+                    <div class="form-group">
+                        <label for="friend-referral-code">
+                            <i class="fas fa-ticket-alt"></i> Код друга:
+                        </label>
+                        <input 
+                            type="text" 
+                            id="friend-referral-code" 
+                            placeholder="Пример: ref_123456_abc"
+                            maxlength="30"
+                        >
+                        <div class="hint-text">
+                            <i class="fas fa-info-circle"></i>
+                            Попросите друга отправить вам его код из раздела "Профиль"
+                        </div>
+                    </div>
+                    
+                    <div class="timer-warning" id="referral-timer">
+                        <i class="fas fa-clock"></i>
+                        <span>Осталось времени: <span id="time-left">5:00</span></span>
+                    </div>
+                    
+                    <div class="invite-actions">
+                        <button class="invite-cancel-btn" onclick="closeInviteModal()">
+                            Отмена
+                        </button>
+                        <button class="invite-submit-btn" onclick="useFriendReferralCode()">
+                            <i class="fas fa-check"></i> Активировать код
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
