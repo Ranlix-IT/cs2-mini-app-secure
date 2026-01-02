@@ -1,18 +1,23 @@
-# app.py - CS2 Bot API Server
-from fastapi import FastAPI, HTTPException, Depends, Header, Request
+# app.py - CS2 Bot API Server с базой данных
+from fastapi import FastAPI, HTTPException, Depends, Header, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, Response
-from fastapi.staticfiles import StaticFiles  # Добавляем поддержку статических файлов
+from fastapi.staticfiles import StaticFiles
 import json
 import logging
 import asyncio
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import hashlib
 import hmac
 import time
 import os
 from pathlib import Path
 from pydantic import BaseModel
+import random
+from datetime import datetime, timedelta
+
+# Импортируем базу данных
+from database import db
 
 # Настройка логирования
 logging.basicConfig(
@@ -23,10 +28,15 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="CS2 Bot API",
-    version="1.0.0",
+    version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
 )
+
+# Конфигурация бота
+TOKEN = "7836761722:AAGzXQjiYuX_MOM9ZpMvrVtBx3175giOprQ"
+ADMIN_IDS = [1003215844]
+REQUIRED_CHANNEL = "@ranworkcs"
 
 # Подключаем статические файлы
 BASE_DIR = Path(__file__).resolve().parent
@@ -43,101 +53,16 @@ app.add_middleware(
     max_age=600,
 )
 
-# Конфигурация бота
-TOKEN = "7836761722:AAGzXQjiYuX_MOM9ZpMvrVtBx3175giOprQ"
-ADMIN_IDS = [1003215844]
-REQUIRED_CHANNEL = "@ranworkcs"
-
-# Система заработка
-REFERRAL_SYSTEM = {
-    "base_reward": 500,
-    "friend_bonus": 100,
-    "milestones": [
-        {"invites": 5, "bonus": 1000, "badge": "🎖️ Начинающий"},
-        {"invites": 10, "bonus": 2500, "badge": "🥉 Бронзовый агент"},
-        {"invites": 25, "bonus": 7500, "badge": "🥈 Серебряный агент"},
-        {"invites": 50, "bonus": 20000, "badge": "🥇 Золотой агент"},
-        {"invites": 100, "bonus": 50000, "badge": "👑 Король рефералов"}
-    ],
-    "passive_income": {
-        "enabled": True,
-        "levels": [
-            {"invites": 10, "percent": 5},
-            {"invites": 25, "percent": 10},
-            {"invites": 50, "percent": 15},
-        ]
-    }
-}
-
-TELEGRAM_PROFILE_SYSTEM = {
-    "requirements": {
-        "both_fields_required": True,
-        "bot_username": "@rancasebot",
-        "alternative_names": ["rancasebot", "RANcaseBot"],
-    },
-    "rewards": {
-        "initial_reward": 500,
-        "weekly_reward": 500,
-        "bonus_periods": [
-            {"days": 7, "reward": 500},
-            {"days": 14, "reward": 1000},
-            {"days": 30, "reward": 2500},
-            {"days": 90, "reward": 10000},
-        ]
-    },
-    "verification": {
-        "check_interval_hours": 6,
-        "auto_disable_on_remove": True,
-        "penalty_for_removal": 1000,
-    }
-}
-
-STEAM_PROFILE_SYSTEM = {
-    "requirements": {
-        "min_level": 3,
-        "bot_link_required": True,
-        "bot_links": [
-            "https://t.me/rancasebot",
-            "t.me/rancasebot",
-            "@rancasebot"
-        ],
-        "profile_privacy": "public",
-    },
-    "rewards": {
-        "initial_reward": 1000,
-        "weekly_reward": 750,
-        "level_bonuses": [
-            {"min_level": 10, "bonus": 500},
-            {"min_level": 25, "bonus": 1500},
-            {"min_level": 50, "bonus": 5000},
-            {"min_level": 100, "bonus": 15000},
-        ],
-        "duration_bonuses": [
-            {"days": 7, "reward": 750},
-            {"days": 30, "reward": 5000},
-            {"days": 90, "reward": 20000},
-            {"days": 365, "reward": 100000},
-        ]
-    }
-}
-
-# Пути к файлам данных
-DATA_DIR = BASE_DIR / "data"
-DATA_DIR.mkdir(exist_ok=True)
-
-USERS_FILE = DATA_DIR / "users.json"
-PROMO_CODES_FILE = DATA_DIR / "promo_codes.json"
-
 # Модели данных
 class OpenCaseRequest(BaseModel):
     price: int
+    case_id: Optional[int] = None
 
 class ActivatePromoRequest(BaseModel):
     promo_code: str
 
 class WithdrawItemRequest(BaseModel):
-    item_id: Optional[str] = None
-    item_index: Optional[int] = None
+    item_id: int
 
 class SetTradeLinkRequest(BaseModel):
     trade_link: str
@@ -150,113 +75,7 @@ class CheckSteamProfileRequest(BaseModel):
     steam_url: str
 
 class InviteFriendRequest(BaseModel):
-    friend_id: Optional[str] = None
-    friend_username: Optional[str] = None
-
-# Загрузка данных
-def load_users() -> Dict[str, Any]:
-    """Загружает пользователей из файла"""
-    try:
-        if USERS_FILE.exists():
-            with open(USERS_FILE, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                logger.info(f"Загружено пользователей: {len(data)}")
-                
-                # Миграция старых пользователей к новой структуре
-                for user_id, user_data in data.items():
-                    # Добавляем поля реферальной системы если их нет
-                    if 'referral_tier' not in user_data:
-                        user_data['referral_tier'] = 0
-                        user_data['total_referral_earnings'] = 0
-                        user_data['passive_income_enabled'] = False
-                        user_data['passive_income_percent'] = 0
-                    
-                    # Добавляем поля для профилей
-                    if 'telegram_profile_status' not in user_data:
-                        user_data['telegram_profile_status'] = {
-                            "verified": False,
-                            "last_check": None,
-                            "verification_date": None,
-                            "total_earned": 0,
-                            "next_reward_date": None,
-                            "badge": None
-                        }
-                    
-                    if 'steam_profile_status' not in user_data:
-                        user_data['steam_profile_status'] = {
-                            "verified": False,
-                            "level": 0,
-                            "verification_date": None,
-                            "total_earned": 0,
-                            "next_reward_date": None,
-                            "last_level_check": None
-                        }
-                    
-                    # Добавляем статистику
-                    if 'stats' not in user_data:
-                        user_data['stats'] = {
-                            "total_earned": 0,
-                            "from_referrals": 0,
-                            "from_telegram": 0,
-                            "from_steam": 0,
-                            "total_invites": len(user_data.get('referrals', [])),
-                            "active_invites": len(user_data.get('referrals', []))
-                        }
-                    
-                    data[user_id] = user_data
-                
-                return data
-    except Exception as e:
-        logger.error(f"Ошибка загрузки пользователей: {e}")
-    return {}
-
-def load_promo_codes() -> Dict[str, Any]:
-    """Загружает промокоды из файла"""
-    try:
-        if PROMO_CODES_FILE.exists():
-            with open(PROMO_CODES_FILE, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                # Инициализируем uses для существующих промокодов если нет
-                for code in data:
-                    if 'uses' not in data[code]:
-                        data[code]['uses'] = 0
-                logger.info(f"Загружено промокодов: {len(data)}")
-                return data
-    except Exception as e:
-        logger.error(f"Ошибка загрузки промокодов: {e}")
-    
-    # Если файла нет, создаем дефолтные промокоды
-    default_promos = {
-        "WELCOME1": {"points": 100, "max_uses": -1, "uses": 0, "description": "Добро пожаловать!"},
-        "CS2FUN": {"points": 250, "max_uses": 100, "uses": 0, "description": "Для настоящих фанатов CS2"},
-        "RANWORK": {"points": 500, "max_uses": 50, "uses": 0, "description": "От создателей бота"},
-        "START100": {"points": 100, "max_uses": -1, "uses": 0, "description": "Стартовый бонус"},
-        "MINIAPP": {"points": 200, "max_uses": 200, "uses": 0, "description": "За запуск Mini App"}
-    }
-    save_promo_codes(default_promos)
-    return default_promos
-
-def save_users(users: Dict[str, Any]) -> bool:
-    """Сохраняет пользователей в файл"""
-    try:
-        with open(USERS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(users, f, indent=2, ensure_ascii=False)
-        logger.info(f"Сохранено пользователей: {len(users)}")
-        return True
-    except Exception as e:
-        logger.error(f"Ошибка сохранения пользователей: {e}")
-        return False
-
-def save_promo_codes(promo_codes: Dict[str, Any]) -> bool:
-    """Сохраняет промокоды в файл"""
-    try:
-        with open(PROMO_CODES_FILE, 'w', encoding='utf-8') as f:
-            json.dump(promo_codes, f, indent=2, ensure_ascii=False)
-        logger.info(f"Сохранено промокодов: {len(promo_codes)}")
-        return True
-    except Exception as e:
-        logger.error(f"Ошибка сохранения промокодов: {e}")
-        return False
+    referral_code: str
 
 # Валидация данных из Telegram
 def validate_telegram_data(init_data: str) -> Dict[str, Any]:
@@ -335,7 +154,6 @@ async def verify_telegram_auth(
         logger.info(f"Запрос на аутентификацию: {request.url.path}")
         
         # Разрешаем тестирование без авторизации для всех API endpoints
-        # В продакшене это должно быть отключено!
         DEBUG_MODE = os.environ.get('DEBUG_MODE', 'True') == 'True'
         
         if DEBUG_MODE:
@@ -354,7 +172,6 @@ async def verify_telegram_auth(
         
         if not authorization:
             logger.warning("Отсутствует заголовок Authorization")
-            # Для тестирования разрешаем без авторизации некоторые endpoints
             if request.url.path in ["/api/health", "/api/available-promos", "/api/test", "/", "/script.js", "/style.css"]:
                 return {
                     'user': {'id': 1003215844, 'first_name': 'Test', 'username': 'test'}, 
@@ -411,221 +228,113 @@ async def serve_index():
         else:
             return {
                 "status": "online", 
-                "service": "CS2 Bot API",
-                "version": "1.0.0",
-                "message": "HTML файл не найден, используйте API endpoints",
+                "service": "CS2 Bot API v2.0",
+                "version": "2.0.0",
+                "database": "SQLite",
                 "timestamp": time.time()
             }
     except Exception as e:
         logger.error(f"Ошибка загрузки index.html: {e}")
         raise HTTPException(status_code=500, detail="Ошибка загрузки страницы")
 
-@app.get("/favicon.ico")
-async def favicon():
-    favicon_path = BASE_DIR / "favicon.ico"
-    if favicon_path.exists():
-        return FileResponse(favicon_path)
-    icon_path = BASE_DIR / "icon.png"
-    if icon_path.exists():
-        return FileResponse(icon_path)
-    return Response(status_code=404)
-
-@app.get("/manifest.json")
-async def serve_manifest():
-    """Отдача манифеста PWA"""
-    try:
-        manifest_path = BASE_DIR / "manifest.json"
-        if manifest_path.exists():
-            return FileResponse(manifest_path, media_type="application/json")
-    except Exception as e:
-        logger.error(f"Ошибка загрузки манифеста: {e}")
-    
-    # Fallback манифест
-    manifest = {
-        "name": "CS2 Skin Bot",
-        "short_name": "CS2 Bot",
-        "description": "Открывай кейсы, зарабатывай баллы, получай скины CS2 бесплатно",
-        "start_url": "/",
-        "display": "standalone",
-        "theme_color": "#667eea",
-        "background_color": "#1a202c",
-        "orientation": "portrait",
-        "scope": "/",
-        "lang": "ru",
-        "categories": ["games", "entertainment"],
-        "icons": [
-            {
-                "src": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgdmlld0JveD0iMCAwIDUxMiA1MTIiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSI1MTIiIGhlaWdodD0iNTEyIiByeD0iMTI4IiBmaWxsPSIjNjY3RWVhIi8+CjxjaXJjbGUgY3g9IjI1NiIgY3k9IjI1NiIgcj0iMTIwIiBmaWxsPSIjNzY0QmEyIi8+Cjx0ZXh0IHg9IjI1NiIgeT0iMjU2IiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iODAiIGZpbGw9IndoaXRlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+Q1MyPC90ZXh0Pgo8L3N2Zz4K",
-                "sizes": "512x512",
-                "type": "image/svg+xml",
-                "purpose": "any"
-            }
-        ]
-    }
-    return JSONResponse(content=manifest)
-
-@app.get("/script.js")
-async def serve_script():
-    """Отдача JavaScript файла"""
-    try:
-        script_path = BASE_DIR / "script.js"
-        if script_path.exists():
-            with open(script_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            return Response(content=content, media_type="application/javascript")
-        else:
-            raise HTTPException(status_code=404, detail="script.js not found")
-    except Exception as e:
-        logger.error(f"Ошибка загрузки script.js: {e}")
-        raise HTTPException(status_code=500, detail="Ошибка загрузки скрипта")
-
-@app.get("/style.css")
-async def serve_style():
-    """Отдача CSS файла"""
-    try:
-        style_path = BASE_DIR / "style.css"
-        if style_path.exists():
-            with open(style_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            return Response(content=content, media_type="text/css")
-        else:
-            raise HTTPException(status_code=404, detail="style.css not found")
-    except Exception as e:
-        logger.error(f"Ошибка загрузки style.css: {e}")
-        raise HTTPException(status_code=500, detail="Ошибка загрузки стилей")
-
-@app.get("/service-worker.js")
-async def serve_service_worker():
-    """Отдача Service Worker файла"""
-    try:
-        sw_path = BASE_DIR / "service-worker.js"
-        if sw_path.exists():
-            with open(sw_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            return Response(content=content, media_type="application/javascript")
-        else:
-            raise HTTPException(status_code=404, detail="service-worker.js not found")
-    except Exception as e:
-        logger.error(f"Ошибка загрузки service-worker.js: {e}")
-        raise HTTPException(status_code=500, detail="Ошибка загрузки service worker")
-
 @app.get("/api/health")
 async def health_check():
     """Проверка здоровья API"""
-    return {
-        "status": "healthy", 
-        "service": "CS2 Bot API",
-        "version": "1.0.0",
-        "timestamp": time.time(),
-        "users_count": len(load_users()),
-        "promos_count": len(load_promo_codes()),
-        "data_dir": str(DATA_DIR),
-        "telegram_bot": "connected" if TOKEN else "disconnected",
-        "debug_mode": os.environ.get('DEBUG_MODE', 'True')
-    }
+    try:
+        # Проверяем подключение к базе данных
+        import sqlite3
+        conn = sqlite3.connect("data/cs2_bot.db", check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM users")
+        user_count = cursor.fetchone()[0]
+        conn.close()
+        
+        return {
+            "status": "healthy", 
+            "service": "CS2 Bot API v2.0",
+            "version": "2.0.0",
+            "timestamp": time.time(),
+            "database": "SQLite",
+            "users_count": user_count,
+            "telegram_bot": "connected" if TOKEN else "disconnected",
+            "debug_mode": os.environ.get('DEBUG_MODE', 'True')
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "error": str(e),
+            "timestamp": time.time()
+        }
 
 @app.get("/api/user")
 async def get_user_data(auth_data: Dict[str, Any] = Depends(verify_telegram_auth)):
     """Получение данных пользователя"""
     try:
         user_info = auth_data['user']
-        user_id = user_info.get('id')
         demo_mode = auth_data.get('demo_mode', False)
+        user_id = user_info.get('id')
         
         if not user_id:
-            logger.warning("ID пользователя не найден")
             raise HTTPException(status_code=400, detail="ID пользователя не найден")
         
-        logger.info(f"Получение данных пользователя: {user_id} (demo: {demo_mode})")
+        if demo_mode:
+            return await get_demo_user_data(user_info)
         
-        # Загружаем данные пользователя
-        users = load_users()
-        user_key = str(user_id)
+        # Получаем или создаем пользователя в базе данных
+        user = db.get_or_create_user(
+            telegram_id=user_id,
+            username=user_info.get('username'),
+            first_name=user_info.get('first_name'),
+            last_name=user_info.get('last_name')
+        )
         
-        if user_key not in users:
-            # Создаем нового пользователя
-            users[user_key] = {
-                "username": user_info.get('username'),
-                "first_name": user_info.get('first_name'),
-                "last_name": user_info.get('last_name', ''),
-                "points": 100,  # Начальный баланс
-                "subscribed": False,
-                "referrals": [],
-                "inventory": [],
-                "used_promo_codes": [],
-                "referral_code": f"ref_{user_id}_{int(time.time())}",
-                "referred_by": None,
-                "last_daily_bonus": None,
-                "trade_link": None,
-                "steam_collab": None,
-                "telegram_collab": None,
-                "created_at": time.time(),
-                "last_active": time.time(),
-                # Новые поля
-                "referral_tier": 0,
-                "total_referral_earnings": 0,
-                "passive_income_enabled": False,
-                "passive_income_percent": 0,
-                "telegram_profile_status": {
-                    "verified": False,
-                    "last_check": None,
-                    "verification_date": None,
-                    "total_earned": 0,
-                    "next_reward_date": None,
-                    "badge": None
-                },
-                "steam_profile_status": {
-                    "verified": False,
-                    "level": 0,
-                    "verification_date": None,
-                    "total_earned": 0,
-                    "next_reward_date": None,
-                    "last_level_check": None
-                },
-                "stats": {
-                    "total_earned": 0,
-                    "from_referrals": 0,
-                    "from_telegram": 0,
-                    "from_steam": 0,
-                    "total_invites": 0,
-                    "active_invites": 0
-                }
-            }
-            save_users(users)
-            logger.info(f"Создан новый пользователь: {user_id}")
+        if not user:
+            raise HTTPException(status_code=500, detail="Ошибка создания пользователя")
         
-        # Обновляем время последней активности
-        users[user_key]["last_active"] = time.time()
-        save_users(users)
+        # Получаем статистику
+        stats = db.get_user_stats(user['id'])
         
-        user_data = users[user_key]
+        # Получаем инвентарь
+        inventory = db.get_inventory(user['id'])
         
-        # Формируем ответ
+        # Получаем реферальную информацию
+        referral_info = db.get_referral_info(user['id'])
+        
+        # Проверяем ежедневный бонус
+        daily_bonus_available = check_daily_bonus_available(user['id'])
+        
         response = {
             "success": True,
             "user": {
-                "id": user_id,
-                "username": user_data.get("username"),
-                "first_name": user_data.get("first_name"),
-                "last_name": user_data.get("last_name"),
-                "balance": user_data.get("points", 0),
-                "inventory": user_data.get("inventory", []),
-                "referral_code": user_data.get("referral_code"),
-                "trade_link": user_data.get("trade_link"),
-                "created_at": user_data.get("created_at"),
-                "referrals_count": len(user_data.get("referrals", [])),
-                "subscribed": user_data.get("subscribed", False)
+                "id": user['id'],
+                "telegram_id": user['telegram_id'],
+                "username": user['username'],
+                "first_name": user['first_name'],
+                "last_name": user['last_name'],
+                "balance": user['points'],
+                "referral_code": user['referral_code'],
+                "trade_link": user['trade_link'],
+                "created_at": user['created_at'],
+                "is_subscribed": bool(user['is_subscribed'])
             },
-            "daily_bonus_available": check_daily_bonus_available(user_data),
-            "server_time": time.time(),
-            "telegram_profile_status": user_data.get("telegram_profile_status", {}),
-            "steam_profile_status": user_data.get("steam_profile_status", {}),
-            "stats": user_data.get("stats", {})
+            "stats": {
+                "total_earned": stats.get('total_earned', 0),
+                "referral_earnings": stats.get('referral_earnings', 0),
+                "telegram_earnings": stats.get('telegram_earnings', 0),
+                "steam_earnings": stats.get('steam_earnings', 0),
+                "total_cases_opened": stats.get('total_cases_opened', 0),
+                "total_spent": stats.get('total_spent', 0),
+                "inventory_count": stats.get('inventory_count', 0),
+                "inventory_value": stats.get('inventory_value', 0)
+            },
+            "referral_info": referral_info,
+            "inventory": inventory,
+            "daily_bonus_available": daily_bonus_available,
+            "daily_streak": stats.get('daily_streak', 0),
+            "telegram_profile_verified": bool(stats.get('telegram_verified')),
+            "steam_profile_verified": bool(stats.get('steam_verified')),
+            "server_time": time.time()
         }
-        
-        if demo_mode:
-            response["demo_mode"] = True
-            response["message"] = "Демо-режим: используются тестовые данные"
         
         return response
         
@@ -634,6 +343,72 @@ async def get_user_data(auth_data: Dict[str, Any] = Depends(verify_telegram_auth
     except Exception as e:
         logger.error(f"Ошибка получения данных пользователя: {e}")
         raise HTTPException(status_code=500, detail="Ошибка сервера")
+
+async def get_demo_user_data(user_info: Dict[str, Any]) -> Dict[str, Any]:
+    """Возвращает демо данные пользователя"""
+    return {
+        "success": True,
+        "user": {
+            "id": 1,
+            "telegram_id": user_info.get('id', 1003215844),
+            "username": user_info.get('username', 'demo_user'),
+            "first_name": user_info.get('first_name', 'Демо'),
+            "last_name": user_info.get('last_name', 'Пользователь'),
+            "balance": 1500,
+            "referral_code": f"ref_{user_info.get('id', 1003215844)}",
+            "trade_link": "https://steamcommunity.com/tradeoffer/new/?partner=123456789&token=abc123",
+            "created_at": time.time() - 86400,
+            "is_subscribed": True
+        },
+        "stats": {
+            "total_earned": 2000,
+            "referral_earnings": 500,
+            "telegram_earnings": 500,
+            "steam_earnings": 1000,
+            "total_cases_opened": 10,
+            "total_spent": 5000,
+            "inventory_count": 3,
+            "inventory_value": 1500
+        },
+        "referral_info": {
+            "total_referrals": 3,
+            "active_referrals": 3,
+            "referral_code": f"ref_{user_info.get('id', 1003215844)}",
+            "referral_link": f"https://t.me/MeteoHinfoBot?start=ref_{user_info.get('id', 1003215844)}"
+        },
+        "inventory": [
+            {
+                "id": 1,
+                "item_name": "Наклейка | ENCE |",
+                "item_type": "sticker",
+                "item_rarity": "common",
+                "item_price": 250,
+                "created_at": time.time() - 86400
+            },
+            {
+                "id": 2,
+                "item_name": "FAMAS | Колония",
+                "item_type": "weapon",
+                "item_rarity": "uncommon",
+                "item_price": 500,
+                "created_at": time.time() - 43200
+            },
+            {
+                "id": 3,
+                "item_name": "Five-SeveN | Хладагент",
+                "item_type": "weapon",
+                "item_rarity": "rare",
+                "item_price": 750,
+                "created_at": time.time() - 21600
+            }
+        ],
+        "daily_bonus_available": True,
+        "daily_streak": 3,
+        "telegram_profile_verified": True,
+        "steam_profile_verified": True,
+        "server_time": time.time(),
+        "demo_mode": True
+    }
 
 @app.post("/api/open-case")
 async def open_case(
@@ -650,105 +425,55 @@ async def open_case(
         if not case_price or case_price <= 0:
             raise HTTPException(status_code=400, detail="Неверная цена кейса")
         
-        logger.info(f"Пользователь {user_id} открывает кейс за {case_price} (demo: {demo_mode})")
+        if demo_mode:
+            return await open_case_demo(user_info, case_price)
         
-        # Загружаем данные
-        users = load_users()
-        user_key = str(user_id)
-        
-        if user_key not in users:
+        # Получаем пользователя
+        user = db.get_user(telegram_id=user_id)
+        if not user:
             raise HTTPException(status_code=404, detail="Пользователь не найден")
         
-        user_data = users[user_key]
-        
         # Проверяем баланс
-        user_balance = user_data.get('points', 0)
-        if user_balance < case_price:
+        if user['points'] < case_price:
             return JSONResponse(
                 status_code=200,
                 content={
                     "success": False,
                     "error": "Недостаточно баллов",
                     "required": case_price,
-                    "current": user_balance,
+                    "current": user['points'],
                     "message": "Пополните баланс или выполните задания"
                 }
             )
         
-        # Определяем выигрыш
-        items_db = {
-            500: [
-                {"name": "Наклейка | ENCE |", "type": "sticker", "rarity": "common"},
-                {"name": "Наклейка | Grayhound", "type": "sticker", "rarity": "common"},
-                {"name": "Наклейка | PGL |", "type": "sticker", "rarity": "common"}
-            ],
-            3000: [
-                {"name": "Наклейка | huNter |", "type": "sticker", "rarity": "uncommon"},
-                {"name": "FAMAS | Колония", "type": "weapon", "rarity": "uncommon"},
-                {"name": "UMP-45 | Внедорожник", "type": "weapon", "rarity": "uncommon"}
-            ],
-            5000: [
-                {"name": "Five-SeveN | Хладагент", "type": "weapon", "rarity": "rare"},
-                {"name": "Капсула с наклейками", "type": "case", "rarity": "rare"},
-                {"name": "Наклейка | XD", "type": "sticker", "rarity": "rare"}
-            ],
-            10000: [
-                {"name": "Наклейка | Клоунский парик", "type": "sticker", "rarity": "epic"},
-                {"name": "Наклейка | Высокий полёт", "type": "sticker", "rarity": "epic"},
-                {"name": "Sticker | From The Deep (Glitter)", "type": "sticker", "rarity": "epic"}
-            ],
-            15000: [
-                {"name": "Наклейка | Гипноглаза", "type": "sticker", "rarity": "legendary"},
-                {"name": "Наклейка | Радужный путь", "type": "sticker", "rarity": "legendary"},
-                {"name": "Брелок | Щепотка соли", "type": "collectible", "rarity": "legendary"}
-            ],
-        }
+        # Получаем случайный предмет из кейса
+        won_item = get_random_item_from_case(case_price)
         
-        import random
-        available_items = items_db.get(case_price, [])
-        if not available_items:
-            raise HTTPException(status_code=400, detail="Неверная цена кейса")
+        # Списываем баллы
+        if not db.update_user_balance(
+            user['id'], 
+            -case_price, 
+            "open_case",
+            json.dumps({"case_price": case_price, "item": won_item['name']})
+        ):
+            raise HTTPException(status_code=500, detail="Ошибка списания баллов")
         
-        # Выбираем предмет с учетом редкости
-        won_item_data = random.choice(available_items)
-        won_item = won_item_data["name"]
-        item_type = won_item_data["type"]
-        item_rarity = won_item_data["rarity"]
+        # Добавляем предмет в инвентарь
+        item_id = db.add_to_inventory(user['id'], won_item)
         
-        # Определяем цену предмета (от 50% до 150% от цены кейса)
-        item_price = int(case_price * random.uniform(0.5, 1.5))
-        
-        # Обновляем данные пользователя
-        user_data['points'] = user_data.get('points', 0) - case_price
-        user_data['inventory'].append({
-            "id": str(int(time.time() * 1000)),
-            "name": won_item,
-            "price": item_price,
-            "type": item_type,
-            "rarity": item_rarity,
-            "received_at": time.time(),
-            "case_price": case_price
-        })
-        
-        # Сохраняем изменения
-        users[user_key] = user_data
-        save_users(users)
-        
-        logger.info(f"Пользователь {user_id} выиграл: {won_item} (цена: {item_price})")
+        # Получаем обновленные данные
+        user = db.get_user(user_id=user['id'])
+        inventory = db.get_inventory(user['id'])
         
         response = {
             "success": True,
-            "item": won_item,
-            "item_price": item_price,
-            "item_type": item_type,
-            "item_rarity": item_rarity,
-            "new_balance": user_data['points'],
-            "inventory": user_data['inventory'],
-            "message": f"Вы получили: {won_item}"
+            "item": won_item['name'],
+            "item_data": won_item,
+            "item_id": item_id,
+            "new_balance": user['points'],
+            "inventory": inventory,
+            "message": f"Вы получили: {won_item['name']}"
         }
-        
-        if demo_mode:
-            response["demo_mode"] = True
         
         return response
         
@@ -757,6 +482,87 @@ async def open_case(
     except Exception as e:
         logger.error(f"Ошибка открытия кейса: {e}")
         raise HTTPException(status_code=500, detail="Ошибка сервера")
+
+async def open_case_demo(user_info: Dict[str, Any], case_price: int) -> Dict[str, Any]:
+    """Демо режим открытия кейса"""
+    items_db = {
+        500: [
+            {"name": "Наклейка | ENCE |", "type": "sticker", "rarity": "common", "price": 250},
+            {"name": "Наклейка | Grayhound", "type": "sticker", "rarity": "common", "price": 200},
+            {"name": "Наклейка | PGL |", "type": "sticker", "rarity": "common", "price": 300}
+        ],
+        3000: [
+            {"name": "Наклейка | huNter |", "type": "sticker", "rarity": "uncommon", "price": 500},
+            {"name": "FAMAS | Колония", "type": "weapon", "rarity": "uncommon", "price": 800},
+            {"name": "UMP-45 | Внедорожник", "type": "weapon", "rarity": "uncommon", "price": 700}
+        ]
+    }
+    
+    import random
+    available_items = items_db.get(case_price, items_db[500])
+    won_item = random.choice(available_items)
+    
+    return {
+        "success": True,
+        "item": won_item['name'],
+        "item_data": won_item,
+        "item_id": random.randint(1000, 9999),
+        "new_balance": 1000,
+        "inventory": [
+            {
+                "id": 1,
+                "item_name": won_item['name'],
+                "item_type": won_item['type'],
+                "item_rarity": won_item['rarity'],
+                "item_price": won_item['price'],
+                "created_at": time.time()
+            }
+        ],
+        "message": f"Вы получили: {won_item['name']}",
+        "demo_mode": True
+    }
+
+def get_random_item_from_case(case_price: int) -> Dict[str, Any]:
+    """Возвращает случайный предмет из кейса"""
+    items_db = {
+        500: [
+            {"name": "Наклейка | ENCE |", "type": "sticker", "rarity": "common", "price": 250},
+            {"name": "Наклейка | Grayhound", "type": "sticker", "rarity": "common", "price": 200},
+            {"name": "Наклейка | PGL |", "type": "sticker", "rarity": "common", "price": 300}
+        ],
+        3000: [
+            {"name": "Наклейка | huNter |", "type": "sticker", "rarity": "uncommon", "price": 500},
+            {"name": "FAMAS | Колония", "type": "weapon", "rarity": "uncommon", "price": 800},
+            {"name": "UMP-45 | Внедорожник", "type": "weapon", "rarity": "uncommon", "price": 700}
+        ],
+        5000: [
+            {"name": "Five-SeveN | Хладагент", "type": "weapon", "rarity": "rare", "price": 1500},
+            {"name": "Капсула с наклейками", "type": "case", "rarity": "rare", "price": 2000},
+            {"name": "Sticker | XD", "type": "sticker", "rarity": "rare", "price": 1000}
+        ],
+        10000: [
+            {"name": "Наклейка | Клоунский парик", "type": "sticker", "rarity": "epic", "price": 3000},
+            {"name": "Наклейка | Высокий полёт", "type": "sticker", "rarity": "epic", "price": 3500},
+            {"name": "Sticker | From The Deep", "type": "sticker", "rarity": "epic", "price": 4000}
+        ],
+        15000: [
+            {"name": "Наклейка | Гипноглаза", "type": "sticker", "rarity": "legendary", "price": 6000},
+            {"name": "Наклейка | Радужный путь", "type": "sticker", "rarity": "legendary", "price": 7000},
+            {"name": "Брелок | Щепотка соли", "type": "collectible", "rarity": "legendary", "price": 8000}
+        ]
+    }
+    
+    available_items = items_db.get(case_price, items_db[500])
+    import random
+    won_item = random.choice(available_items)
+    
+    # Добавляем цену кейса
+    won_item['case_price'] = case_price
+    
+    # Генерируем ссылку на Steam Market
+    won_item['steam_market_link'] = f"https://steamcommunity.com/market/listings/730/{won_item['name'].replace(' ', '%20')}"
+    
+    return won_item
 
 @app.post("/api/daily-bonus")
 async def claim_daily_bonus(
@@ -768,53 +574,59 @@ async def claim_daily_bonus(
         demo_mode = auth_data.get('demo_mode', False)
         user_id = user_info.get('id')
         
-        logger.info(f"Пользователь {user_id} запрашивает ежедневный бонус (demo: {demo_mode})")
+        if demo_mode:
+            return await claim_daily_bonus_demo()
         
-        # Загружаем данные
-        users = load_users()
-        user_key = str(user_id)
-        
-        if user_key not in users:
+        # Получаем пользователя
+        user = db.get_user(telegram_id=user_id)
+        if not user:
             raise HTTPException(status_code=404, detail="Пользователь не найден")
         
-        user_data = users[user_key]
-        
         # Проверяем доступность бонуса
-        if not check_daily_bonus_available(user_data):
-            next_bonus = calculate_next_bonus_time(user_data)
+        if not check_daily_bonus_available(user['id']):
+            next_bonus = get_next_bonus_time(user['id'])
             return JSONResponse(
                 status_code=200,
                 content={
                     "success": False,
                     "error": "Бонус уже получен сегодня",
                     "next_available": next_bonus,
-                    "next_available_human": time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(next_bonus)) if next_bonus else None,
                     "message": "Возвращайтесь завтра!"
                 }
             )
         
-        # Начисляем бонус (от 50 до 150 баллов случайно)
+        # Рассчитываем бонус (от 50 до 150 + стрик)
         import random
-        bonus_amount = random.randint(50, 150)
-        user_data['points'] = user_data.get('points', 0) + bonus_amount
-        user_data['last_daily_bonus'] = time.time()
+        base_bonus = random.randint(50, 150)
+        streak = get_daily_streak(user['id'])
+        streak_bonus = min(streak * 10, 100)  # Максимум +100 за стрик
+        total_bonus = base_bonus + streak_bonus
         
-        # Сохраняем изменения
-        users[user_key] = user_data
-        save_users(users)
+        # Начисляем бонус
+        if not db.update_user_balance(
+            user['id'], 
+            total_bonus, 
+            "daily_bonus",
+            json.dumps({"base": base_bonus, "streak": streak, "streak_bonus": streak_bonus})
+        ):
+            raise HTTPException(status_code=500, detail="Ошибка начисления бонуса")
         
-        logger.info(f"Пользователь {user_id} получил бонус: {bonus_amount}")
+        # Записываем получение бонуса
+        record_daily_bonus(user['id'], total_bonus, streak + 1)
+        
+        # Получаем обновленные данные
+        user = db.get_user(user_id=user['id'])
         
         response = {
             "success": True,
-            "bonus": bonus_amount,
-            "new_balance": user_data['points'],
-            "next_available": calculate_next_bonus_time(user_data),
-            "message": f"Ежедневный бонус: +{bonus_amount} баллов!"
+            "bonus": total_bonus,
+            "base_bonus": base_bonus,
+            "streak": streak + 1,
+            "streak_bonus": streak_bonus,
+            "new_balance": user['points'],
+            "next_available": get_next_bonus_time(user['id']),
+            "message": f"Ежедневный бонус: +{total_bonus} баллов! (стрик: {streak + 1})"
         }
-        
-        if demo_mode:
-            response["demo_mode"] = True
         
         return response
         
@@ -823,6 +635,23 @@ async def claim_daily_bonus(
     except Exception as e:
         logger.error(f"Ошибка получения бонуса: {e}")
         raise HTTPException(status_code=500, detail="Ошибка сервера")
+
+async def claim_daily_bonus_demo() -> Dict[str, Any]:
+    """Демо режим ежедневного бонуса"""
+    import random
+    bonus = random.randint(50, 150)
+    
+    return {
+        "success": True,
+        "bonus": bonus,
+        "base_bonus": bonus,
+        "streak": 1,
+        "streak_bonus": 0,
+        "new_balance": 1500,
+        "next_available": time.time() + 86400,
+        "message": f"Ежедневный бонус: +{bonus} баллов!",
+        "demo_mode": True
+    }
 
 @app.post("/api/activate-promo")
 async def activate_promo_code(
@@ -839,20 +668,42 @@ async def activate_promo_code(
         if not promo_code:
             raise HTTPException(status_code=400, detail="Не указан промокод")
         
-        logger.info(f"Пользователь {user_id} активирует промокод: {promo_code} (demo: {demo_mode})")
+        if demo_mode:
+            return await activate_promo_demo(promo_code)
         
-        # Загружаем данные
-        users = load_users()
-        promo_codes = load_promo_codes()
-        user_key = str(user_id)
-        
-        if user_key not in users:
+        # Получаем пользователя
+        user = db.get_user(telegram_id=user_id)
+        if not user:
             raise HTTPException(status_code=404, detail="Пользователь не найден")
         
-        user_data = users[user_key]
+        # Проверяем промокод в базе данных
+        conn = db.get_connection()
+        cursor = conn.cursor()
         
-        # Проверяем, использовал ли пользователь уже этот промокод
-        if promo_code in user_data.get('used_promo_codes', []):
+        cursor.execute('''
+            SELECT pc.*, 
+            (SELECT COUNT(*) FROM used_promo_codes upc 
+             WHERE upc.promo_code_id = pc.id AND upc.user_id = ?) as already_used
+            FROM promo_codes pc
+            WHERE pc.code = ? AND pc.is_active = 1 
+            AND (pc.expires_at IS NULL OR pc.expires_at > CURRENT_TIMESTAMP)
+        ''', (user['id'], promo_code))
+        
+        promo = cursor.fetchone()
+        
+        if not promo:
+            conn.close()
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "success": False,
+                    "error": "Неверный промокод",
+                    "message": "Такого промокода не существует или он неактивен"
+                }
+            )
+        
+        if promo['already_used'] > 0:
+            conn.close()
             return JSONResponse(
                 status_code=200,
                 content={
@@ -862,21 +713,8 @@ async def activate_promo_code(
                 }
             )
         
-        # Проверяем существование промокода
-        if promo_code not in promo_codes:
-            return JSONResponse(
-                status_code=200,
-                content={
-                    "success": False,
-                    "error": "Неверный промокод",
-                    "message": "Такого промокода не существует"
-                }
-            )
-        
-        promo_data = promo_codes[promo_code]
-        
-        # Проверяем лимит использований
-        if promo_data['max_uses'] != -1 and promo_data['uses'] >= promo_data['max_uses']:
+        if promo['max_uses'] != -1 and promo['used_count'] >= promo['max_uses']:
+            conn.close()
             return JSONResponse(
                 status_code=200,
                 content={
@@ -887,32 +725,41 @@ async def activate_promo_code(
             )
         
         # Начисляем баллы
-        points = promo_data['points']
-        user_data['points'] = user_data.get('points', 0) + points
-        user_data['used_promo_codes'] = user_data.get('used_promo_codes', []) + [promo_code]
+        if not db.update_user_balance(
+            user['id'], 
+            promo['points'], 
+            "promo_code",
+            json.dumps({"promo_code": promo_code})
+        ):
+            conn.close()
+            raise HTTPException(status_code=500, detail="Ошибка начисления баллов")
         
-        # Обновляем счетчик использований промокода
-        promo_data['uses'] = promo_data.get('uses', 0) + 1
-        promo_codes[promo_code] = promo_data
+        # Отмечаем промокод как использованный
+        cursor.execute('''
+            INSERT INTO used_promo_codes (user_id, promo_code_id)
+            VALUES (?, ?)
+        ''', (user['id'], promo['id']))
         
-        # Сохраняем изменения
-        users[user_key] = user_data
-        save_users(users)
-        save_promo_codes(promo_codes)
+        # Обновляем счетчик использований
+        cursor.execute('''
+            UPDATE promo_codes SET used_count = used_count + 1
+            WHERE id = ?
+        ''', (promo['id'],))
         
-        logger.info(f"Пользователь {user_id} активировал промокод {promo_code} на {points} баллов")
+        conn.commit()
+        conn.close()
+        
+        # Получаем обновленные данные
+        user = db.get_user(user_id=user['id'])
         
         response = {
             "success": True,
-            "points": points,
-            "new_balance": user_data['points'],
+            "points": promo['points'],
+            "new_balance": user['points'],
             "promo_code": promo_code,
-            "description": promo_data.get('description', ''),
-            "message": f"Промокод активирован! +{points} баллов"
+            "description": promo['description'],
+            "message": f"Промокод активирован! +{promo['points']} баллов"
         }
-        
-        if demo_mode:
-            response["demo_mode"] = True
         
         return response
         
@@ -921,6 +768,34 @@ async def activate_promo_code(
     except Exception as e:
         logger.error(f"Ошибка активации промокода: {e}")
         raise HTTPException(status_code=500, detail="Ошибка сервера")
+
+async def activate_promo_demo(promo_code: str) -> Dict[str, Any]:
+    """Демо режим активации промокода"""
+    promo_points = {
+        'WELCOME1': 100,
+        'CS2FUN': 250,
+        'RANWORK': 500,
+        'START100': 100,
+        'MINIAPP': 200
+    }
+    
+    if promo_code in promo_points:
+        return {
+            "success": True,
+            "points": promo_points[promo_code],
+            "new_balance": 1500 + promo_points[promo_code],
+            "promo_code": promo_code,
+            "description": "Демо промокод",
+            "message": f"Промокод активирован! +{promo_points[promo_code]} баллов",
+            "demo_mode": True
+        }
+    else:
+        return {
+            "success": False,
+            "error": "Неверный промокод",
+            "message": "Такого промокода не существует",
+            "demo_mode": True
+        }
 
 @app.post("/api/withdraw-item")
 async def withdraw_item(
@@ -932,52 +807,17 @@ async def withdraw_item(
         user_info = auth_data['user']
         demo_mode = auth_data.get('demo_mode', False)
         user_id = user_info.get('id')
-        item_index = data.item_index
-        item_id = data.item_id
         
-        if item_index is None and item_id is None:
-            raise HTTPException(status_code=400, detail="Не указан предмет")
+        if demo_mode:
+            return await withdraw_item_demo(data.item_id)
         
-        logger.info(f"Пользователь {user_id} выводит предмет: index={item_index}, id={item_id} (demo: {demo_mode})")
-        
-        # Загружаем данные
-        users = load_users()
-        user_key = str(user_id)
-        
-        if user_key not in users:
+        # Получаем пользователя
+        user = db.get_user(telegram_id=user_id)
+        if not user:
             raise HTTPException(status_code=404, detail="Пользователь не найден")
         
-        user_data = users[user_key]
-        inventory = user_data.get('inventory', [])
-        
-        # Находим предмет
-        item = None
-        item_idx = -1
-        
-        if item_id is not None:
-            # Ищем по ID
-            for i, inv_item in enumerate(inventory):
-                if inv_item.get('id') == item_id:
-                    item = inv_item
-                    item_idx = i
-                    break
-        elif item_index is not None and 0 <= item_index < len(inventory):
-            # Ищем по индексу
-            item_idx = item_index
-            item = inventory[item_idx]
-        
-        if not item:
-            return JSONResponse(
-                status_code=200,
-                content={
-                    "success": False,
-                    "error": "Предмет не найден",
-                    "message": "Предмет не найден в вашем инвентаре"
-                }
-            )
-        
         # Проверяем трейд ссылку
-        if not user_data.get('trade_link'):
+        if not user['trade_link']:
             return JSONResponse(
                 status_code=200,
                 content={
@@ -988,38 +828,31 @@ async def withdraw_item(
                 }
             )
         
-        # Отправляем уведомление администратору (в лог)
-        admin_notification = {
-            "user_id": user_id,
-            "username": user_data.get('username'),
-            "item": item,
-            "trade_link": user_data.get('trade_link'),
-            "timestamp": time.time(),
-            "type": "withdraw_request"
-        }
+        # Создаем запрос на вывод
+        if not db.create_withdrawal_request(user['id'], data.item_id, user['trade_link']):
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "success": False,
+                    "error": "Не удалось создать запрос на вывод",
+                    "message": "Предмет не найден или уже выводится"
+                }
+            )
         
-        logger.info(f"Запрос на вывод предмета: {json.dumps(admin_notification, ensure_ascii=False)}")
-        
-        # Удаляем предмет из инвентаря
-        user_data['inventory'].pop(item_idx)
-        
-        # Сохраняем изменения
-        users[user_key] = user_data
-        save_users(users)
+        # Логируем действие
+        db.update_user_balance(
+            user['id'], 
+            0, 
+            "withdrawal_request",
+            json.dumps({"item_id": data.item_id})
+        )
         
         response = {
             "success": True,
-            "message": "Запрос отправлен администратору",
-            "item": item['name'],
-            "item_price": item.get('price', 0),
-            "remaining_items": len(user_data['inventory']),
+            "message": "Запрос на вывод отправлен администратору",
             "admin_notified": True,
             "notification_id": str(int(time.time() * 1000))
         }
-        
-        if demo_mode:
-            response["demo_mode"] = True
-            response["message"] = "Демо: запрос на вывод отправлен (в реальном режиме администратор получил бы уведомление)"
         
         return response
         
@@ -1028,6 +861,16 @@ async def withdraw_item(
     except Exception as e:
         logger.error(f"Ошибка вывода предмета: {e}")
         raise HTTPException(status_code=500, detail="Ошибка сервера")
+
+async def withdraw_item_demo(item_id: int) -> Dict[str, Any]:
+    """Демо режим вывода предмета"""
+    return {
+        "success": True,
+        "message": "Демо: запрос на вывод отправлен",
+        "admin_notified": False,
+        "notification_id": str(int(time.time() * 1000)),
+        "demo_mode": True
+    }
 
 @app.post("/api/set-trade-link")
 async def set_trade_link(
@@ -1044,42 +887,50 @@ async def set_trade_link(
         if not trade_link:
             raise HTTPException(status_code=400, detail="Не указана трейд ссылка")
         
-        logger.info(f"Пользователь {user_id} устанавливает трейд ссылку (demo: {demo_mode})")
-        
-        # Простая валидация ссылки
-        if not ("steamcommunity.com/tradeoffer/new/" in trade_link or 
-                "steamcommunity.com/tradeoffer/" in trade_link):
+        # Валидируем трейд ссылку
+        validation = db.validate_trade_link(trade_link)
+        if not validation["valid"]:
             return JSONResponse(
                 status_code=200,
                 content={
                     "success": False,
                     "error": "Неверный формат трейд ссылки",
-                    "message": "Ссылка должна быть на Steam Community Trade Offer"
+                    "message": validation["message"]
                 }
             )
         
-        # Загружаем данные
-        users = load_users()
-        user_key = str(user_id)
+        if demo_mode:
+            return {
+                "success": True,
+                "message": "Трейд ссылка сохранена (демо)",
+                "trade_link": trade_link,
+                "validated": True,
+                "demo_mode": True
+            }
         
-        if user_key not in users:
+        # Получаем пользователя
+        user = db.get_user(telegram_id=user_id)
+        if not user:
             raise HTTPException(status_code=404, detail="Пользователь не найден")
         
         # Обновляем трейд ссылку
-        users[user_key]['trade_link'] = trade_link
-        save_users(users)
+        conn = db.get_connection()
+        cursor = conn.cursor()
         
-        logger.info(f"Пользователь {user_id} сохранил трейд ссылку")
+        cursor.execute('''
+            UPDATE users SET trade_link = ? WHERE id = ?
+        ''', (trade_link, user['id']))
+        
+        conn.commit()
+        conn.close()
         
         response = {
             "success": True,
             "message": "Трейд ссылка сохранена",
             "trade_link": trade_link,
-            "validated": True
+            "validated": True,
+            "steam_id": validation.get("steam_id")
         }
-        
-        if demo_mode:
-            response["demo_mode"] = True
         
         return response
         
@@ -1087,201 +938,6 @@ async def set_trade_link(
         raise
     except Exception as e:
         logger.error(f"Ошибка сохранения трейд ссылки: {e}")
-        raise HTTPException(status_code=500, detail="Ошибка сервера")
-
-@app.get("/api/available-promos")
-async def get_available_promos():
-    """Получение списка доступных промокодов"""
-    try:
-        promo_codes = load_promo_codes()
-        
-        # Фильтруем активные промокоды
-        available_promos = []
-        for code, data in promo_codes.items():
-            if data['max_uses'] == -1 or data['uses'] < data['max_uses']:
-                available_promos.append({
-                    "code": code,
-                    "points": data['points'],
-                    "description": data.get('description', ''),
-                    "remaining_uses": data['max_uses'] - data['uses'] if data['max_uses'] != -1 else "∞",
-                    "max_uses": data['max_uses'],
-                    "used": data['uses']
-                })
-        
-        return {
-            "success": True,
-            "promos": available_promos,
-            "total": len(available_promos),
-            "server_time": time.time()
-        }
-        
-    except Exception as e:
-        logger.error(f"Ошибка получения промокодов: {e}")
-        raise HTTPException(status_code=500, detail="Ошибка сервера")
-
-@app.get("/api/test")
-async def test_endpoint():
-    """Тестовый endpoint для проверки работы API"""
-    try:
-        users = load_users()
-        promos = load_promo_codes()
-        
-        return {
-            "success": True,
-            "message": "API работает корректно",
-            "timestamp": time.time(),
-            "server_info": {
-                "python_version": os.sys.version,
-                "platform": os.sys.platform,
-                "data_dir": str(DATA_DIR),
-                "users_file_exists": USERS_FILE.exists(),
-                "promo_file_exists": PROMO_CODES_FILE.exists(),
-                "users_count": len(users),
-                "promos_count": len(promos)
-            },
-            "endpoints": [
-                "/api/health",
-                "/api/user",
-                "/api/open-case",
-                "/api/daily-bonus",
-                "/api/activate-promo",
-                "/api/withdraw-item",
-                "/api/set-trade-link",
-                "/api/available-promos"
-            ]
-        }
-    except Exception as e:
-        logger.error(f"Ошибка тестового endpoint: {e}")
-        raise HTTPException(status_code=500, detail="Ошибка сервера")
-
-@app.get("/api/admin/stats")
-async def admin_stats(auth_data: Dict[str, Any] = Depends(verify_telegram_auth)):
-    """Статистика для администратора"""
-    try:
-        user_info = auth_data['user']
-        user_id = user_info.get('id')
-        
-        # Проверяем, является ли пользователь администратором
-        if user_id not in ADMIN_IDS:
-            raise HTTPException(status_code=403, detail="Доступ запрещен")
-        
-        users = load_users()
-        promos = load_promo_codes()
-        
-        # Считаем статистику
-        total_balance = sum(user.get('points', 0) for user in users.values())
-        total_inventory_items = sum(len(user.get('inventory', [])) for user in users.values())
-        total_inventory_value = sum(
-            sum(item.get('price', 0) for item in user.get('inventory', []))
-            for user in users.values()
-        )
-        
-        # Активные пользователи (за последние 7 дней)
-        week_ago = time.time() - 7 * 86400
-        active_users = sum(
-            1 for user in users.values() 
-            if user.get('last_active', 0) > week_ago
-        )
-        
-        return {
-            "success": True,
-            "stats": {
-                "total_users": len(users),
-                "active_users_7d": active_users,
-                "total_balance": total_balance,
-                "total_inventory_items": total_inventory_items,
-                "total_inventory_value": total_inventory_value,
-                "promo_codes_total": len(promos),
-                "promo_codes_used": sum(promo.get('uses', 0) for promo in promos.values()),
-                "server_time": time.time()
-            },
-            "recent_users": [
-                {
-                    "id": user_id,
-                    "username": user.get('username'),
-                    "balance": user.get('points', 0),
-                    "inventory": len(user.get('inventory', [])),
-                    "created_at": user.get('created_at'),
-                    "last_active": user.get('last_active')
-                }
-                for user_id, user in list(users.items())[:10]  # Последние 10 пользователей
-            ]
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Ошибка получения статистики: {e}")
-        raise HTTPException(status_code=500, detail="Ошибка сервера")
-
-# ===== НОВЫЕ ENDPOINTS ДЛЯ УЛУЧШЕННОГО ЗАРАБОТКА =====
-
-@app.get("/api/earn/stats")
-async def get_earn_stats(auth_data: Dict[str, Any] = Depends(verify_telegram_auth)):
-    """Получение статистики заработка"""
-    try:
-        user_info = auth_data['user']
-        demo_mode = auth_data.get('demo_mode', False)
-        user_id = user_info.get('id')
-        
-        logger.info(f"Получение статистики заработка для пользователя: {user_id} (demo: {demo_mode})")
-        
-        users = load_users()
-        user_key = str(user_id)
-        
-        if user_key not in users:
-            raise HTTPException(status_code=404, detail="Пользователь не найден")
-        
-        user_data = users[user_key]
-        
-        # Рассчитываем прогресс до следующего milestone
-        total_invites = len(user_data.get('referrals', []))
-        next_milestone = None
-        current_tier = user_data.get('referral_tier', 0)
-        
-        for milestone in REFERRAL_SYSTEM["milestones"]:
-            if total_invites < milestone["invites"]:
-                next_milestone = milestone
-                break
-        
-        # Прогноз заработка
-        daily_estimate = 0
-        if user_data.get('telegram_profile_status', {}).get('verified'):
-            daily_estimate += TELEGRAM_PROFILE_SYSTEM["rewards"]["weekly_reward"] / 7
-        
-        if user_data.get('steam_profile_status', {}).get('verified'):
-            daily_estimate += STEAM_PROFILE_SYSTEM["rewards"]["weekly_reward"] / 7
-        
-        response = {
-            "success": True,
-            "stats": {
-                "total_earned": user_data.get('stats', {}).get('total_earned', 0),
-                "from_referrals": user_data.get('stats', {}).get('from_referrals', 0),
-                "from_telegram": user_data.get('stats', {}).get('from_telegram', 0),
-                "from_steam": user_data.get('stats', {}).get('from_steam', 0),
-                "total_invites": total_invites,
-                "active_invites": user_data.get('stats', {}).get('active_invites', 0),
-                "referral_tier": current_tier,
-                "daily_estimate": daily_estimate,
-                "weekly_estimate": daily_estimate * 7,
-                "monthly_estimate": daily_estimate * 30
-            },
-            "referral_system": REFERRAL_SYSTEM,
-            "next_milestone": next_milestone,
-            "progress_percent": (total_invites / next_milestone["invites"] * 100) if next_milestone else 100,
-            "telegram_status": user_data.get('telegram_profile_status', {}),
-            "steam_status": user_data.get('steam_profile_status', {})
-        }
-        
-        if demo_mode:
-            response["demo_mode"] = True
-        
-        return response
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Ошибка получения статистики заработка: {e}")
         raise HTTPException(status_code=500, detail="Ошибка сервера")
 
 @app.post("/api/earn/check-telegram")
@@ -1295,85 +951,37 @@ async def check_telegram_profile(
         demo_mode = auth_data.get('demo_mode', False)
         user_id = user_info.get('id')
         
-        logger.info(f"Проверка Telegram профиля для пользователя: {user_id} (demo: {demo_mode})")
+        if demo_mode:
+            return await check_telegram_profile_demo()
         
-        users = load_users()
-        user_key = str(user_id)
-        
-        if user_key not in users:
+        # Получаем пользователя
+        user = db.get_user(telegram_id=user_id)
+        if not user:
             raise HTTPException(status_code=404, detail="Пользователь не найден")
         
-        user_data = users[user_key]
-        profile_status = user_data.get('telegram_profile_status', {})
+        # Проверяем профиль
+        result = db.check_telegram_profile(
+            user['id'],
+            data.last_name,
+            data.bio
+        )
         
-        if demo_mode:
-            # В демо-режиме симулируем проверку
-            last_name_ok = True
-            bio_ok = True
-            verified = True
-        else:
-            # В реальном приложении здесь была бы проверка через Telegram API
-            # Для демо симулируем проверку
-            last_name = data.last_name or user_info.get('last_name', '')
-            bio = data.bio or ''
-            
-            # Проверяем наличие бота в профиле
-            bot_names = TELEGRAM_PROFILE_SYSTEM["requirements"]["alternative_names"] + \
-                       [TELEGRAM_PROFILE_SYSTEM["requirements"]["bot_username"]]
-            
-            last_name_ok = any(bot_name.lower() in last_name.lower() for bot_name in bot_names)
-            bio_ok = any(bot_name.lower() in bio.lower() for bot_name in bot_names)
-            
-            if TELEGRAM_PROFILE_SYSTEM["requirements"]["both_fields_required"]:
-                verified = last_name_ok and bio_ok
-            else:
-                verified = last_name_ok or bio_ok
-        
-        # Обновляем статус
-        was_verified = profile_status.get('verified', False)
-        profile_status['verified'] = verified
-        profile_status['last_check'] = time.time()
-        
-        if verified and not was_verified:
-            # Первая верификация - начисляем награду
-            profile_status['verification_date'] = time.time()
-            profile_status['next_reward_date'] = time.time() + (7 * 86400)  # Через 7 дней
-            
-            reward = TELEGRAM_PROFILE_SYSTEM["rewards"]["initial_reward"]
-            user_data['points'] = user_data.get('points', 0) + reward
-            profile_status['total_earned'] = profile_status.get('total_earned', 0) + reward
-            
-            # Обновляем статистику
-            stats = user_data.get('stats', {})
-            stats['from_telegram'] = stats.get('from_telegram', 0) + reward
-            stats['total_earned'] = stats.get('total_earned', 0) + reward
-        
-        elif not verified and was_verified:
-            # Удалили бота из профиля
-            penalty = TELEGRAM_PROFILE_SYSTEM["verification"]["penalty_for_removal"]
-            user_data['points'] = max(0, user_data.get('points', 0) - penalty)
-            profile_status['verification_date'] = None
-            profile_status['next_reward_date'] = None
-        
-        user_data['telegram_profile_status'] = profile_status
-        users[user_key] = user_data
-        save_users(users)
+        # Получаем обновленные данные
+        stats = db.get_user_stats(user['id'])
         
         response = {
             "success": True,
-            "verified": verified,
-            "last_name_ok": last_name_ok,
-            "bio_ok": bio_ok,
-            "profile_photo_ok": True,  # В демо всегда True
-            "rewards_available": TELEGRAM_PROFILE_SYSTEM["rewards"]["initial_reward"] if verified and not was_verified else 0,
-            "reward_received": verified and not was_verified,
-            "penalty_applied": not verified and was_verified,
-            "next_check": profile_status.get('next_reward_date'),
-            "message": "Telegram профиль проверен" if verified else "Добавьте бота в профиль Telegram"
+            "verified": result["verified"],
+            "has_bot_in_lastname": result["has_bot_in_lastname"],
+            "has_bot_in_bio": result["has_bot_in_bio"],
+            "first_verification": result["first_verification"],
+            "telegram_earnings": stats.get("telegram_earnings", 0),
+            "message": "Telegram профиль проверен" if result["verified"] else "Добавьте бота в профиль Telegram"
         }
         
-        if demo_mode:
-            response["demo_mode"] = True
+        if result["first_verification"]:
+            response["bonus_awarded"] = 500
+            response["message"] = "Telegram профиль подтвержден! +500 баллов"
         
         return response
         
@@ -1382,6 +990,19 @@ async def check_telegram_profile(
     except Exception as e:
         logger.error(f"Ошибка проверки Telegram профиля: {e}")
         raise HTTPException(status_code=500, detail="Ошибка сервера")
+
+async def check_telegram_profile_demo() -> Dict[str, Any]:
+    """Демо режим проверки Telegram профиля"""
+    return {
+        "success": True,
+        "verified": True,
+        "has_bot_in_lastname": True,
+        "has_bot_in_bio": True,
+        "first_verification": False,
+        "telegram_earnings": 500,
+        "message": "Telegram профиль проверен",
+        "demo_mode": True
+    }
 
 @app.post("/api/earn/check-steam")
 async def check_steam_profile(
@@ -1398,77 +1019,46 @@ async def check_steam_profile(
         if not steam_url:
             raise HTTPException(status_code=400, detail="Не указана ссылка на Steam профиль")
         
-        logger.info(f"Проверка Steam профиля для пользователя: {user_id} (demo: {demo_mode})")
+        if demo_mode:
+            return await check_steam_profile_demo()
         
-        users = load_users()
-        user_key = str(user_id)
-        
-        if user_key not in users:
+        # Получаем пользователя
+        user = db.get_user(telegram_id=user_id)
+        if not user:
             raise HTTPException(status_code=404, detail="Пользователь не найден")
         
-        user_data = users[user_key]
-        profile_status = user_data.get('steam_profile_status', {})
+        # Проверяем профиль
+        result = db.check_steam_profile(user['id'], steam_url)
         
-        if demo_mode:
-            # В демо-режиме симулируем проверку
-            verified = True
-            steam_level = 10  # Демо уровень
-        else:
-            # В реальном приложении здесь был бы запрос к Steam API
-            # Симулируем успешную проверку
-            verified = True
-            steam_level = 10  # Демо уровень
+        if "error" in result:
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "success": False,
+                    "error": result["error"],
+                    "message": "Неверный Steam URL"
+                }
+            )
         
-        # Обновляем статус
-        was_verified = profile_status.get('verified', False)
-        profile_status['verified'] = verified
-        profile_status['level'] = steam_level
-        profile_status['last_level_check'] = time.time()
-        
-        if verified and not was_verified:
-            # Первая верификация - начисляем награду
-            profile_status['verification_date'] = time.time()
-            profile_status['next_reward_date'] = time.time() + (7 * 86400)  # Через 7 дней
-            
-            reward = STEAM_PROFILE_SYSTEM["rewards"]["initial_reward"]
-            user_data['points'] = user_data.get('points', 0) + reward
-            profile_status['total_earned'] = profile_status.get('total_earned', 0) + reward
-            
-            # Бонус за уровень
-            for level_bonus in STEAM_PROFILE_SYSTEM["rewards"]["level_bonuses"]:
-                if steam_level >= level_bonus["min_level"]:
-                    bonus_key = f"steam_level_{level_bonus['min_level']}"
-                    if bonus_key not in user_data.get('used_promo_codes', []):
-                        user_data['points'] += level_bonus["bonus"]
-                        profile_status['total_earned'] += level_bonus["bonus"]
-                        user_data['used_promo_codes'] = user_data.get('used_promo_codes', []) + [bonus_key]
-            
-            # Обновляем статистику
-            stats = user_data.get('stats', {})
-            stats['from_steam'] = stats.get('from_steam', 0) + reward
-            stats['total_earned'] = stats.get('total_earned', 0) + reward
-        
-        user_data['steam_profile_status'] = profile_status
-        users[user_key] = user_data
-        save_users(users)
+        # Получаем обновленные данные
+        stats = db.get_user_stats(user['id'])
         
         response = {
             "success": True,
-            "verified": verified,
-            "level": steam_level,
-            "has_link": True,
-            "is_public": True,
-            "game_count": 42,  # Демо значение
-            "badges_count": 7,  # Демо значение
-            "profile_age_days": 365,  # Демо значение
-            "rewards_available": STEAM_PROFILE_SYSTEM["rewards"]["initial_reward"] if verified and not was_verified else 0,
-            "reward_received": verified and not was_verified,
-            "next_reward_date": profile_status.get('next_reward_date'),
+            "verified": result["verified"],
+            "steam_id": result["steam_id"],
+            "level": result["level"],
+            "games": result["games"],
+            "badges": result["badges"],
+            "age_days": result["age_days"],
+            "first_verification": result["first_verification"],
+            "steam_earnings": stats.get("steam_earnings", 0),
             "message": "Steam профиль проверен"
         }
         
-        if demo_mode:
-            response["demo_mode"] = True
+        if result["first_verification"]:
+            response["bonus_awarded"] = 1000
+            response["message"] = "Steam профиль подтвержден! +1000 баллов"
         
         return response
         
@@ -1478,94 +1068,130 @@ async def check_steam_profile(
         logger.error(f"Ошибка проверки Steam профиля: {e}")
         raise HTTPException(status_code=500, detail="Ошибка сервера")
 
+async def check_steam_profile_demo() -> Dict[str, Any]:
+    """Демо режим проверки Steam профиля"""
+    return {
+        "success": True,
+        "verified": True,
+        "steam_id": "76561198000000000",
+        "level": 10,
+        "games": 42,
+        "badges": 7,
+        "age_days": 365,
+        "first_verification": False,
+        "steam_earnings": 1000,
+        "message": "Steam профиль проверен",
+        "demo_mode": True
+    }
+
 @app.post("/api/earn/invite-friend")
 async def invite_friend(
     data: InviteFriendRequest,
     auth_data: Dict[str, Any] = Depends(verify_telegram_auth)
 ):
-    """Приглашение друга"""
+    """Приглашение друга по реферальной ссылке"""
     try:
         user_info = auth_data['user']
         demo_mode = auth_data.get('demo_mode', False)
         user_id = user_info.get('id')
+        referral_code = data.referral_code.strip()
         
-        logger.info(f"Пользователь {user_id} приглашает друга (demo: {demo_mode})")
+        if demo_mode:
+            return await invite_friend_demo()
         
-        users = load_users()
-        user_key = str(user_id)
-        
-        if user_key not in users:
+        # Получаем текущего пользователя
+        current_user = db.get_user(telegram_id=user_id)
+        if not current_user:
             raise HTTPException(status_code=404, detail="Пользователь не найден")
         
-        user_data = users[user_key]
+        # Пользователь не может пригласить сам себя
+        if referral_code == current_user['referral_code']:
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "success": False,
+                    "error": "Нельзя использовать свой реферальный код",
+                    "message": "Используйте код другого пользователя"
+                }
+            )
         
-        # В реальном приложении здесь была бы обработка реферала
-        # Для демо просто начисляем награду
-        total_invites = len(user_data.get('referrals', []))
+        # Находим пользователя по реферальному коду
+        conn = db.get_connection()
+        cursor = conn.cursor()
         
-        # Начисляем базовую награду
-        base_reward = REFERRAL_SYSTEM["base_reward"]
-        user_data['points'] = user_data.get('points', 0) + base_reward
-        user_data['total_referral_earnings'] = user_data.get('total_referral_earnings', 0) + base_reward
+        cursor.execute(
+            "SELECT id FROM users WHERE referral_code = ?",
+            (referral_code,)
+        )
         
-        # Обновляем статистику
-        stats = user_data.get('stats', {})
-        stats['from_referrals'] = stats.get('from_referrals', 0) + base_reward
-        stats['total_earned'] = stats.get('total_earned', 0) + base_reward
-        stats['total_invites'] = total_invites + 1
-        stats['active_invites'] = stats.get('active_invites', 0) + 1
+        referrer = cursor.fetchone()
         
-        # Проверяем достижение milestones
-        new_total_invites = total_invites + 1
-        current_tier = user_data.get('referral_tier', 0)
+        if not referrer:
+            conn.close()
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "success": False,
+                    "error": "Неверный реферальный код",
+                    "message": "Такой реферальный код не существует"
+                }
+            )
         
-        milestone_bonus = 0
-        new_tier = current_tier
+        referrer_id = referrer['id']
         
-        for i, milestone in enumerate(REFERRAL_SYSTEM["milestones"]):
-            if new_total_invites == milestone["invites"]:
-                milestone_bonus = milestone["bonus"]
-                new_tier = i + 1
-                
-                # Начисляем бонус за milestone
-                user_data['points'] += milestone_bonus
-                user_data['total_referral_earnings'] += milestone_bonus
-                stats['from_referrals'] += milestone_bonus
-                stats['total_earned'] += milestone_bonus
-                
-                user_data['referral_tier'] = new_tier
+        # Проверяем, не является ли пользователь уже чьим-то рефералом
+        if current_user['referred_by']:
+            conn.close()
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "success": False,
+                    "error": "Уже есть пригласивший",
+                    "message": "Вы уже были приглашены другим пользователем"
+                }
+            )
         
-        # Проверяем включение пассивного дохода
-        if REFERRAL_SYSTEM["passive_income"]["enabled"] and not user_data.get('passive_income_enabled', False):
-            for level in REFERRAL_SYSTEM["passive_income"]["levels"]:
-                if new_total_invites >= level["invites"]:
-                    user_data['passive_income_enabled'] = True
-                    user_data['passive_income_percent'] = level["percent"]
+        # Добавляем реферала
+        if not db.add_referral(referrer_id, current_user['id']):
+            conn.close()
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "success": False,
+                    "error": "Ошибка добавления реферала",
+                    "message": "Не удалось добавить реферала"
+                }
+            )
         
-        # Симулируем добавление реферала
-        new_friend_id = f"friend_{int(time.time())}"
-        user_data['referrals'] = user_data.get('referrals', []) + [new_friend_id]
-        user_data['stats'] = stats
+        # Начисляем бонус пригласившему
+        referral_bonus = 500
+        if db.update_user_balance(
+            referrer_id,
+            referral_bonus,
+            "referral_bonus",
+            json.dumps({"referred_user_id": current_user['id']})
+        ):
+            # Отмечаем, что бонус получен
+            cursor.execute('''
+                UPDATE referrals SET bonus_received = 1
+                WHERE referrer_id = ? AND referred_id = ?
+            ''', (referrer_id, current_user['id']))
         
-        users[user_key] = user_data
-        save_users(users)
+        conn.commit()
+        conn.close()
+        
+        # Получаем обновленные данные
+        current_user = db.get_user(user_id=current_user['id'])
+        referral_info = db.get_referral_info(current_user['id'])
         
         response = {
             "success": True,
-            "base_reward": base_reward,
-            "milestone_bonus": milestone_bonus,
-            "new_balance": user_data['points'],
-            "total_invites": new_total_invites,
-            "referral_tier": new_tier,
-            "milestone_reached": milestone_bonus > 0,
-            "passive_income_activated": user_data.get('passive_income_enabled', False),
-            "passive_income_percent": user_data.get('passive_income_percent', 0),
-            "message": f"Друг приглашен! +{base_reward} баллов" + 
-                      (f" + бонус {milestone_bonus} баллов за достижение!" if milestone_bonus > 0 else "")
+            "bonus_awarded": referral_bonus,
+            "to_user_id": referrer_id,
+            "new_balance": current_user['points'],
+            "referral_info": referral_info,
+            "message": f"Вы успешно присоединились по реферальной ссылке! Пригласивший получил {referral_bonus} баллов"
         }
-        
-        if demo_mode:
-            response["demo_mode"] = True
         
         return response
         
@@ -1575,6 +1201,23 @@ async def invite_friend(
         logger.error(f"Ошибка приглашения друга: {e}")
         raise HTTPException(status_code=500, detail="Ошибка сервера")
 
+async def invite_friend_demo() -> Dict[str, Any]:
+    """Демо режим приглашения друга"""
+    return {
+        "success": True,
+        "bonus_awarded": 500,
+        "to_user_id": 1,
+        "new_balance": 1500,
+        "referral_info": {
+            "total_referrals": 3,
+            "active_referrals": 3,
+            "referral_code": "ref_1003215844_demo",
+            "referral_link": "https://t.me/rancasebot?start=ref_1003215844_demo"
+        },
+        "message": "Вы успешно присоединились по реферальной ссылке! Пригласивший получил 500 баллов",
+        "demo_mode": True
+    }
+
 @app.get("/api/earn/referral-info")
 async def get_referral_info(auth_data: Dict[str, Any] = Depends(verify_telegram_auth)):
     """Получение информации о реферальной системе"""
@@ -1583,57 +1226,49 @@ async def get_referral_info(auth_data: Dict[str, Any] = Depends(verify_telegram_
         demo_mode = auth_data.get('demo_mode', False)
         user_id = user_info.get('id')
         
-        logger.info(f"Получение реферальной информации для пользователя: {user_id} (demo: {demo_mode})")
+        if demo_mode:
+            return {
+                "success": True,
+                "referral_code": f"ref_{user_id}_demo",
+                "referral_link": f"https://t.me/rancasebot?start=ref_{user_id}_demo",
+                "total_referrals": 3,
+                "active_referrals": 3,
+                "total_earned": 1500,
+                "referral_tier": 0,
+                "milestones": [
+                    {"invites": 5, "bonus": 1000, "badge": "🎖️ Начинающий"},
+                    {"invites": 10, "bonus": 2500, "badge": "🥉 Бронзовый агент"}
+                ],
+                "demo_mode": True
+            }
         
-        users = load_users()
-        user_key = str(user_id)
-        
-        if user_key not in users:
+        # Получаем пользователя
+        user = db.get_user(telegram_id=user_id)
+        if not user:
             raise HTTPException(status_code=404, detail="Пользователь не найден")
         
-        user_data = users[user_key]
-        total_invites = len(user_data.get('referrals', []))
-        current_tier = user_data.get('referral_tier', 0)
+        # Получаем реферальную информацию
+        referral_info = db.get_referral_info(user['id'])
         
-        # Находим текущий и следующий milestones
-        current_milestone = None
-        next_milestone = None
-        
-        for i, milestone in enumerate(REFERRAL_SYSTEM["milestones"]):
-            if total_invites >= milestone["invites"]:
-                current_milestone = milestone
-            elif next_milestone is None and total_invites < milestone["invites"]:
-                next_milestone = milestone
-        
-        # Формируем прогресс-бар
-        progress_percent = 0
-        if next_milestone:
-            progress_percent = (total_invites / next_milestone["invites"]) * 100
-        
-        # Генерируем реферальную ссылку
-        referral_code = user_data.get('referral_code', f"ref_{user_id}")
-        referral_link = f"https://t.me/MeteoHinfoBot?start={referral_code}"
+        # Получаем статистику
+        stats = db.get_user_stats(user['id'])
         
         response = {
             "success": True,
-            "referral_code": referral_code,
-            "referral_link": referral_link,
-            "total_invites": total_invites,
-            "referral_tier": current_tier,
-            "current_milestone": current_milestone,
-            "next_milestone": next_milestone,
-            "progress_percent": progress_percent,
-            "invites_needed": next_milestone["invites"] - total_invites if next_milestone else 0,
-            "base_reward": REFERRAL_SYSTEM["base_reward"],
-            "passive_income": {
-                "enabled": user_data.get('passive_income_enabled', False),
-                "percent": user_data.get('passive_income_percent', 0)
-            },
-            "all_milestones": REFERRAL_SYSTEM["milestones"]
+            "referral_code": user['referral_code'],
+            "referral_link": referral_info['referral_link'],
+            "total_referrals": referral_info['total_referrals'],
+            "active_referrals": referral_info['active_referrals'],
+            "total_earned": stats.get('referral_earnings', 0),
+            "referral_tier": min(referral_info['total_referrals'] // 5, 4),
+            "milestones": [
+                {"invites": 5, "bonus": 1000, "badge": "🎖️ Начинающий"},
+                {"invites": 10, "bonus": 2500, "badge": "🥉 Бронзовый агент"},
+                {"invites": 25, "bonus": 7500, "badge": "🥈 Серебряный агент"},
+                {"invites": 50, "bonus": 20000, "badge": "🥇 Золотой агент"},
+                {"invites": 100, "bonus": 50000, "badge": "👑 Король рефералов"}
+            ]
         }
-        
-        if demo_mode:
-            response["demo_mode"] = True
         
         return response
         
@@ -1643,28 +1278,167 @@ async def get_referral_info(auth_data: Dict[str, Any] = Depends(verify_telegram_
         logger.error(f"Ошибка получения реферальной информации: {e}")
         raise HTTPException(status_code=500, detail="Ошибка сервера")
 
-# Вспомогательные функции
-def check_daily_bonus_available(user_data: Dict[str, Any]) -> bool:
+@app.get("/api/available-promos")
+async def get_available_promos():
+    """Получение списка доступных промокодов"""
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT code, points, max_uses, used_count, description,
+                   CASE 
+                       WHEN max_uses = -1 THEN '∞'
+                       ELSE max_uses - used_count
+                   END as remaining_uses
+            FROM promo_codes
+            WHERE is_active = 1 
+            AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
+            ORDER BY points DESC
+        ''')
+        
+        promos = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        
+        return {
+            "success": True,
+            "promos": promos,
+            "total": len(promos),
+            "server_time": time.time()
+        }
+        
+    except Exception as e:
+        logger.error(f"Ошибка получения промокодов: {e}")
+        raise HTTPException(status_code=500, detail="Ошибка сервера")
+
+@app.get("/api/test")
+async def test_endpoint():
+    """Тестовый endpoint для проверки работы API"""
+    try:
+        # Получаем статистику базы данных
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        
+        tables = ['users', 'inventory', 'referrals', 'promo_codes', 
+                  'withdrawal_requests', 'telegram_profiles', 'steam_profiles']
+        
+        stats = {}
+        for table in tables:
+            cursor.execute(f"SELECT COUNT(*) as count FROM {table}")
+            stats[table] = cursor.fetchone()['count']
+        
+        conn.close()
+        
+        return {
+            "success": True,
+            "message": "API v2.0 работает корректно",
+            "timestamp": time.time(),
+            "database": "SQLite",
+            "stats": stats,
+            "endpoints": [
+                "/api/health",
+                "/api/user",
+                "/api/open-case",
+                "/api/daily-bonus",
+                "/api/activate-promo",
+                "/api/withdraw-item",
+                "/api/set-trade-link",
+                "/api/available-promos",
+                "/api/earn/check-telegram",
+                "/api/earn/check-steam",
+                "/api/earn/invite-friend",
+                "/api/earn/referral-info"
+            ]
+        }
+    except Exception as e:
+        logger.error(f"Ошибка тестового endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Ошибка сервера")
+
+# ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
+
+def check_daily_bonus_available(user_id: int) -> bool:
     """Проверяет доступность ежедневного бонуса"""
-    last_bonus = user_data.get('last_daily_bonus')
-    if not last_bonus:
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT bonus_date FROM daily_bonuses 
+        WHERE user_id = ? 
+        ORDER BY bonus_date DESC 
+        LIMIT 1
+    ''', (user_id,))
+    
+    result = cursor.fetchone()
+    conn.close()
+    
+    if not result:
         return True
     
-    # Проверяем, прошло ли больше 24 часов
-    current_time = time.time()
-    return (current_time - last_bonus) >= 86400
+    last_bonus_date = datetime.fromisoformat(result['bonus_date'])
+    today = datetime.now().date()
+    
+    return last_bonus_date.date() < today
 
-def calculate_next_bonus_time(user_data: Dict[str, Any]) -> int:
-    """Рассчитывает время следующего доступного бонуса"""
-    last_bonus = user_data.get('last_daily_bonus', 0)
-    return int(last_bonus + 86400) if last_bonus else 0
+def get_daily_streak(user_id: int) -> int:
+    """Получает текущий стрик ежедневных бонусов"""
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT streak FROM daily_bonuses 
+        WHERE user_id = ? 
+        ORDER BY bonus_date DESC 
+        LIMIT 1
+    ''', (user_id,))
+    
+    result = cursor.fetchone()
+    conn.close()
+    
+    return result['streak'] if result else 0
+
+def record_daily_bonus(user_id: int, points: int, streak: int):
+    """Записывает получение ежедневного бонуса"""
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    
+    today = datetime.now().date().isoformat()
+    
+    cursor.execute('''
+        INSERT INTO daily_bonuses (user_id, bonus_date, points, streak)
+        VALUES (?, ?, ?, ?)
+    ''', (user_id, today, points, streak))
+    
+    conn.commit()
+    conn.close()
+
+def get_next_bonus_time(user_id: int) -> int:
+    """Возвращает время следующего доступного бонуса"""
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT bonus_date FROM daily_bonuses 
+        WHERE user_id = ? 
+        ORDER BY bonus_date DESC 
+        LIMIT 1
+    ''', (user_id,))
+    
+    result = cursor.fetchone()
+    conn.close()
+    
+    if not result:
+        return int(time.time())
+    
+    last_bonus_date = datetime.fromisoformat(result['bonus_date'])
+    next_bonus_time = last_bonus_date + timedelta(days=1)
+    
+    return int(next_bonus_time.timestamp())
 
 # Middleware для логирования
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start_time = time.time()
     
-    # Пропускаем health check из логов чтобы не засорять
     if request.url.path != "/api/health" and not request.url.path.endswith(('.js', '.css', '.ico')):
         logger.info(f"👉 {request.method} {request.url.path} - Client: {request.client.host if request.client else 'unknown'}")
     
@@ -1674,7 +1448,6 @@ async def log_requests(request: Request, call_next):
     if request.url.path != "/api/health" and not request.url.path.endswith(('.js', '.css', '.ico')):
         logger.info(f"👈 {request.method} {request.url.path} - {response.status_code} - {process_time:.3f}s")
     
-    # Добавляем CORS заголовки
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "*"
@@ -1697,28 +1470,15 @@ async def preflight_handler(request: Request, rest_of_path: str):
 @app.on_event("startup")
 async def startup_event():
     """Инициализация при запуске сервера"""
-    logger.info("🚀 Запуск CS2 Bot API сервера...")
-    
-    # Проверяем создание директорий
-    DATA_DIR.mkdir(exist_ok=True)
-    
-    # Инициализируем файлы если нужно
-    users_count = len(load_users())
-    promos_count = len(load_promo_codes())
-    
-    logger.info(f"📊 Инициализация завершена:")
-    logger.info(f"   👥 Пользователей: {users_count}")
-    logger.info(f"   🎫 Промокодов: {promos_count}")
-    logger.info(f"   📁 Директория данных: {DATA_DIR}")
-    logger.info(f"   🤖 Токен бота: {TOKEN[:8]}...{TOKEN[-4:] if len(TOKEN) > 12 else ''}")
-    logger.info(f"   🔧 Админы: {ADMIN_IDS}")
-    logger.info(f"   🔧 Режим отладки: {os.environ.get('DEBUG_MODE', 'True')}")
+    logger.info("🚀 Запуск CS2 Bot API сервера v2.0...")
+    logger.info("📊 База данных: SQLite")
+    logger.info(f"🤖 Токен бота: {TOKEN[:8]}...{TOKEN[-4:] if len(TOKEN) > 12 else ''}")
+    logger.info(f"🔧 Режим отладки: {os.environ.get('DEBUG_MODE', 'True')}")
 
 # Точка входа для WSGI
 if __name__ == "__main__":
     import uvicorn
     
-    # Получаем порт из переменной окружения или используем 8000
     port = int(os.environ.get("PORT", 8000))
     
     logger.info(f"🌐 Запуск сервера на http://0.0.0.0:{port}")
