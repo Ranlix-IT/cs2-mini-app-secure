@@ -23,6 +23,9 @@ let enhancedEarnState = {
     passiveIncomePercent: 0
 };
 
+// Таймер для реферального кода
+let referralTimerInterval = null;
+
 // ===== ИНИЦИАЛИЗАЦИЯ =====
 document.addEventListener('DOMContentLoaded', function() {
     console.log("🚀 CS2 Skin Bot запускается...");
@@ -760,6 +763,16 @@ function simulateAPIResponse(endpoint, method, data) {
                 server_time: Date.now() / 1000
             });
             
+        case '/api/can-use-referral':
+            return Promise.resolve({
+                success: true,
+                can_use: true,
+                time_left: 180,
+                minutes_left: 3,
+                message: "Вы можете ввести реферальный код",
+                demo_mode: true
+            });
+            
         case '/api/earn/stats':
             return Promise.resolve({
                 success: true,
@@ -1422,149 +1435,226 @@ function showRewardNotification(title, amount) {
     }, 5000);
 }
 
-// ===== ФУНКЦИОНАЛ ПРИГЛАШЕНИЯ ДРУЗЕЙ =====
-async function showInviteFriendUI() {
-    const inviteSection = document.createElement('div');
-    inviteSection.className = 'invite-friend-section page-section';
-    inviteSection.id = 'invite-friend-section';
-    inviteSection.style.display = 'none';
-    
-    inviteSection.innerHTML = `
-        <div class="section-header">
-            <button class="back-btn" onclick="closeInviteFriendSection()">
-                <i class="fas fa-arrow-left"></i>
-            </button>
-            <h2><i class="fas fa-user-plus"></i> Пригласить друга</h2>
-        </div>
+// ===== ФУНКЦИИ ДЛЯ РЕФЕРАЛЬНОГО КОДА С ТАЙМЕРОМ =====
+async function checkReferralCodeAvailability() {
+    try {
+        const response = await apiRequest('/api/can-use-referral');
         
-        <div class="invite-container">
-            <div class="invite-methods">
-                <div class="invite-method-card" onclick="copyReferralLinkInput()">
-                    <div class="invite-icon">
-                        <i class="fas fa-copy"></i>
-                    </div>
-                    <div class="invite-info">
-                        <h4>Скопировать ссылку</h4>
-                        <p>Скопируйте ссылку и отправьте другу</p>
-                    </div>
-                </div>
-                
-                <div class="invite-method-card" onclick="shareViaTelegram()">
-                    <div class="invite-icon">
-                        <i class="fab fa-telegram"></i>
-                    </div>
-                    <div class="invite-info">
-                        <h4>Поделиться в Telegram</h4>
-                        <p>Выберите чат и отправьте ссылку</p>
-                    </div>
-                </div>
-                
-                <div class="invite-method-card" onclick="generateInviteQR()">
-                    <div class="invite-icon">
-                        <i class="fas fa-qrcode"></i>
-                    </div>
-                    <div class="invite-info">
-                        <h4>QR-код</h4>
-                        <p>Поделитесь QR-кодом с друзьями</p>
-                    </div>
-                </div>
-            </div>
+        if (response.success) {
+            const canUseReferral = response.can_use;
+            const timeLeft = response.time_left;
+            const minutesLeft = response.minutes_left;
             
-            <div class="invite-preview">
-                <h4>Ваша реферальная ссылка:</h4>
-                <div class="referral-link-box">
-                    <input type="text" 
-                           id="referral-link-display" 
-                           value="${enhancedEarnState.referralLink || appState.referralLink || 'Загрузка...'}" 
-                           readonly>
-                    <button class="copy-btn" onclick="copyReferralLinkInput()">
-                        <i class="fas fa-copy"></i>
-                    </button>
-                </div>
-                
-                <div class="invite-stats">
-                    <div class="invite-stat">
-                        <div class="stat-label">Приглашено друзей</div>
-                        <div class="stat-value" id="invited-friends-count">${appState.referralsCount || 0}</div>
-                    </div>
-                    <div class="invite-stat">
-                        <div class="stat-label">Заработано баллов</div>
-                        <div class="stat-value" id="referral-earnings">${appState.referralsCount * 500 || 0}</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    document.querySelector('.main-content').appendChild(inviteSection);
+            // Находим кнопку "Ввести Реферальный код"
+            const referralBtn = document.getElementById('referral-code-btn');
+            const referralSection = document.getElementById('referral-code-section');
+            
+            if (referralBtn && referralSection) {
+                if (canUseReferral) {
+                    // Показываем кнопку с таймером
+                    const minutes = Math.floor(timeLeft / 60);
+                    const seconds = Math.floor(timeLeft % 60);
+                    referralBtn.innerHTML = `<i class="fas fa-key"></i> Ввести код (${minutes}:${seconds.toString().padStart(2, '0')})`;
+                    referralSection.style.display = 'block';
+                    referralBtn.classList.add('warning');
+                    
+                    // Обновляем каждую секунду
+                    if (timeLeft > 0) {
+                        setTimeout(checkReferralCodeAvailability, 1000);
+                    } else {
+                        referralSection.style.display = 'none';
+                        referralBtn.classList.remove('warning');
+                    }
+                } else {
+                    // Скрываем кнопку
+                    referralSection.style.display = 'none';
+                    referralBtn.classList.remove('warning');
+                    
+                    // Показываем сообщение если нужно
+                    if (response.message && !response.demo_mode) {
+                        console.log('Реферальный код недоступен:', response.message);
+                    }
+                }
+            }
+            
+            return canUseReferral;
+        }
+        
+        return false;
+    } catch (error) {
+        console.error('Ошибка проверки доступности реферального кода:', error);
+        return false;
+    }
 }
 
-function copyReferralLinkInput() {
-    const input = document.getElementById('referral-link-display');
-    if (input && input.value) {
-        input.select();
-        input.setSelectionRange(0, 99999);
-        
-        if (navigator.clipboard) {
-            navigator.clipboard.writeText(input.value)
-                .then(() => showToast('Успех!', 'Ссылка скопирована', 'success'))
-                .catch(() => fallbackCopy(input.value));
-        } else {
-            fallbackCopy(input.value);
+async function showReferralCodeForm() {
+    // Проверяем, можно ли еще вводить код
+    const canUse = await checkReferralCodeAvailability();
+    
+    if (!canUse) {
+        showToast('Время истекло', 'Реферальный код можно ввести только в первые 5 минут', 'warning');
+        return;
+    }
+    
+    const modal = document.getElementById('invite-friend-modal');
+    if (modal) {
+        modal.classList.remove('hidden');
+        // Фокусируемся на поле ввода
+        const input = document.getElementById('friend-referral-code');
+        if (input) {
+            setTimeout(() => input.focus(), 100);
         }
+        
+        // Обновляем таймер
+        startReferralTimer();
+    }
+}
+
+function startReferralTimer() {
+    // Очищаем предыдущий интервал
+    if (referralTimerInterval) {
+        clearInterval(referralTimerInterval);
+    }
+    
+    const updateTimerDisplay = async () => {
+        const response = await apiRequest('/api/can-use-referral');
+        if (response.success && response.can_use) {
+            const minutesLeft = Math.floor(response.time_left / 60);
+            const secondsLeft = Math.floor(response.time_left % 60);
+            
+            // Обновляем сообщение
+            const message = document.getElementById('referral-time-message');
+            if (message) {
+                message.innerHTML = `Введите реферальный код друга в течение <strong>${minutesLeft}:${secondsLeft.toString().padStart(2, '0')}</strong>, чтобы получить 500 баллов`;
+            }
+            
+            // Обновляем таймер
+            const timer = document.getElementById('time-left');
+            if (timer) {
+                timer.textContent = `${minutesLeft}:${secondsLeft.toString().padStart(2, '0')}`;
+            }
+            
+            // Если время вышло, закрываем модальное окно
+            if (response.time_left <= 0) {
+                clearInterval(referralTimerInterval);
+                closeInviteModal();
+                showToast('Время истекло', 'Реферальный код можно ввести только в первые 5 минут', 'warning');
+            }
+        } else {
+            // Если нельзя больше использовать, закрываем окно
+            clearInterval(referralTimerInterval);
+            closeInviteModal();
+        }
+    };
+    
+    // Обновляем сразу и затем каждую секунду
+    updateTimerDisplay();
+    referralTimerInterval = setInterval(updateTimerDisplay, 1000);
+}
+
+async function useFriendReferralCode() {
+    // Дополнительная проверка времени
+    const canUse = await checkReferralCodeAvailability();
+    
+    if (!canUse) {
+        showToast('Время истекло', 'Реферальный код можно ввести только в первые 5 минут', 'warning');
+        closeInviteModal();
+        return;
+    }
+    
+    const input = document.getElementById('friend-referral-code');
+    const friendCode = input ? input.value.trim() : '';
+    
+    if (!friendCode) {
+        showToast('Ошибка', 'Введите реферальный код', 'warning');
+        return;
+    }
+    
+    try {
+        const response = await apiRequest('/api/earn/invite-friend', 'POST', {
+            referral_code: friendCode
+        });
+        
+        if (response.success) {
+            appState.balance = response.new_balance;
+            updateUserInfo();
+            
+            closeInviteModal();
+            if (input) input.value = '';
+            
+            showToast('Код активирован!', `+${response.base_reward} баллов`, 'success');
+            
+            // Сразу обновляем состояние кнопки
+            await checkReferralCodeAvailability();
+            
+            await loadEarnData();
+            
+        } else {
+            showToast('Ошибка', response.error || 'Неверный реферальный код', 'error');
+        }
+        
+    } catch (error) {
+        console.error('Ошибка активации кода:', error);
+        showToast('Ошибка', 'Не удалось активировать код', 'error');
+    }
+}
+
+function closeInviteModal() {
+    // Очищаем таймер
+    if (referralTimerInterval) {
+        clearInterval(referralTimerInterval);
+        referralTimerInterval = null;
+    }
+    
+    const modal = document.getElementById('invite-friend-modal');
+    if (modal) {
+        modal.classList.add('hidden');
     }
 }
 
 function shareViaTelegram() {
-    const referralLink = enhancedEarnState.referralLink || appState.referralLink;
+    const referralLink = enhancedEarnState.referralLink || `https://t.me/rancasebot?start=${appState.referralCode}`;
+    
     if (!referralLink) {
         showToast('Ошибка', 'Реферальная ссылка не найдена', 'error');
         return;
     }
     
-    // Открываем Telegram для выбора чата
-    const shareText = `🎮 Присоединяйся к боту для получения скинов CS2!\n\n${referralLink}`;
+    const shareText = `🎮 Присоединяйся к CS2 Skin Bot!\n\n✨ Открывай кейсы и получай скины бесплатно\n💰 Зарабатывай баллы и выводи предметы\n🎁 Ежедневные бонусы и промокоды\n\nПрисоединяйся по моей ссылке:`;
     
-    if (tg && tg.openTelegramLink) {
-        // Используем метод из Telegram Web App SDK
-        tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=${encodeURIComponent('Присоединяйся к боту для получения скинов CS2!')}`);
+    if (typeof window.Telegram !== 'undefined' && window.Telegram.WebApp) {
+        const tg = window.Telegram.WebApp;
+        
+        try {
+            const telegramShareUrl = `https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=${encodeURIComponent(shareText)}`;
+            
+            if (tg.openTelegramLink) {
+                tg.openTelegramLink(telegramShareUrl);
+            } else {
+                window.open(telegramShareUrl, '_blank');
+            }
+            
+            showToast('Telegram', 'Открываем для отправки ссылки', 'info');
+            
+        } catch (error) {
+            console.error('Ошибка Telegram share:', error);
+            
+            const demoShareUrl = `https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=${encodeURIComponent(shareText)}`;
+            window.open(demoShareUrl, '_blank', 'noopener,noreferrer');
+            showToast('Демо-режим', 'Открыта ссылка для Telegram', 'info');
+        }
     } else {
-        // Fallback для демо режима
-        window.open(`https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=${encodeURIComponent('Присоединяйся к боту для получения скинов CS2!')}`, '_blank');
-        showToast('Открыт Telegram', 'Выберите чат для отправки ссылки', 'info');
+        const demoShareUrl = `https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=${encodeURIComponent(shareText)}`;
+        window.open(demoShareUrl, '_blank', 'noopener,noreferrer');
+        showToast('Демо-режим', 'Открыта ссылка для Telegram', 'info');
     }
-}
-
-function generateInviteQR() {
-    const referralLink = enhancedEarnState.referralLink || appState.referralLink;
-    if (!referralLink) return;
-    
-    // В демо режиме просто покажем сообщение
-    showToast('QR-код', 'В реальном режиме здесь будет QR-код', 'info');
-    
-    // В реальном приложении можно использовать библиотеку QRCode.js
-    // Пример: new QRCode(document.getElementById("qrcode"), referralLink);
-}
-
-function openInviteFriendSection() {
-    showInviteFriendUI();
-    openSection('invite-friend');
-}
-
-function closeInviteFriendSection() {
-    const inviteSection = document.getElementById('invite-friend-section');
-    if (inviteSection) {
-        inviteSection.style.display = 'none';
-        inviteSection.classList.add('hidden');
-    }
-    backToMain();
 }
 
 function initEnhancedEarning() {
     const checkTelegramBtn = document.getElementById('check-telegram-btn');
     const checkSteamBtn = document.getElementById('check-steam-btn');
-    const inviteFriendBtn = document.getElementById('invite-friend-btn');
     const copyReferralLinkBtn = document.getElementById('copy-referral-link-btn');
+    const shareTelegramBtn = document.getElementById('share-telegram-btn');
     
     if (checkTelegramBtn) {
         checkTelegramBtn.addEventListener('click', function() { 
@@ -1578,15 +1668,15 @@ function initEnhancedEarning() {
         });
     }
     
-    if (inviteFriendBtn) {
-        inviteFriendBtn.addEventListener('click', function() { 
-            openInviteFriendSection(); 
-        });
-    }
-    
     if (copyReferralLinkBtn) {
         copyReferralLinkBtn.addEventListener('click', function() { 
             debounce(copyEnhancedReferralLink); 
+        });
+    }
+    
+    if (shareTelegramBtn) {
+        shareTelegramBtn.addEventListener('click', function() { 
+            debounce(shareViaTelegram); 
         });
     }
     
@@ -1597,7 +1687,22 @@ function initEnhancedEarning() {
         });
     }
     
+    // Обработчик для Enter в поле ввода кода друга
+    const friendCodeInput = document.getElementById('friend-referral-code');
+    if (friendCodeInput) {
+        friendCodeInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                debounce(useFriendReferralCode);
+            }
+        });
+    }
+    
     console.log("✅ Улучшенная система заработка инициализирована");
+    
+    // Проверяем доступность реферального кода
+    setTimeout(() => {
+        checkReferralCodeAvailability();
+    }, 1000);
 }
 
 // ===== UI ФУНКЦИИ =====
@@ -1916,10 +2021,9 @@ window.checkTelegramProfile = checkTelegramProfile;
 window.checkSteamProfile = checkSteamProfile;
 window.inviteFriend = inviteFriend;
 window.copyEnhancedReferralLink = copyEnhancedReferralLink;
-window.openInviteFriendSection = openInviteFriendSection;
-window.closeInviteFriendSection = closeInviteFriendSection;
-window.copyReferralLinkInput = copyReferralLinkInput;
+window.showReferralCodeForm = showReferralCodeForm;
+window.closeInviteModal = closeInviteModal;
+window.useFriendReferralCode = useFriendReferralCode;
 window.shareViaTelegram = shareViaTelegram;
-window.generateInviteQR = generateInviteQR;
 
 console.log("📦 CS2 Skin Bot скрипт загружен!");
