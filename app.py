@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="CS2 Bot API",
-    version="2.0.0",
+    version="2.0.1",  # Обновленная версия
     docs_url="/docs",
     redoc_url="/redoc"
 )
@@ -43,7 +43,7 @@ BASE_DIR = Path(__file__).resolve().parent
 # Настройка CORS для Telegram Mini Apps
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Для тестирования
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
     allow_headers=["*"],
@@ -75,7 +75,10 @@ class CheckSteamProfileRequest(BaseModel):
 class InviteFriendRequest(BaseModel):
     referral_code: str
 
-# ===== ОБРАБОТЧИКИ СТАТИЧЕСКИХ ФАЙЛОВ =====
+class UpdateRequest(BaseModel):
+    force: bool = False
+
+# ===== ОБРАБОТЧИКИ СТАТИЧЕСКИХ ФАЙЛОВ С АНТИКЕШИРОВАНИЕМ =====
 @app.get("/")
 async def serve_root():
     """Главная HTML страница"""
@@ -84,14 +87,30 @@ async def serve_root():
         if index_path.exists():
             with open(index_path, 'r', encoding='utf-8') as f:
                 html_content = f.read()
-            return HTMLResponse(content=html_content)
+            
+            # Добавляем версию в теги для обновления кеша
+            html_content = html_content.replace(
+                'href="/style.css"',
+                f'href="/style.css?v={int(time.time())}"'
+            ).replace(
+                'src="/script.js"',
+                f'src="/script.js?v={int(time.time())}"'
+            )
+            
+            response = HTMLResponse(content=html_content)
+            # Заголовки против кеширования
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+            response.headers["ETag"] = f'"{hashlib.md5(str(time.time()).encode()).hexdigest()}"'
+            return response
         else:
             return HTMLResponse(content="""
                 <!DOCTYPE html>
                 <html>
                 <head><title>CS2 Bot API</title></head>
                 <body>
-                    <h1>CS2 Bot API v2.0</h1>
+                    <h1>CS2 Bot API v2.0.1</h1>
                     <p>API сервер работает нормально</p>
                     <p><a href="/docs">Документация API</a></p>
                 </body>
@@ -103,18 +122,24 @@ async def serve_root():
 
 @app.get("/style.css")
 async def serve_css():
-    """Отдача CSS файла"""
+    """Отдача CSS файла с антикешированием"""
     css_path = BASE_DIR / "style.css"
     if css_path.exists():
-        return FileResponse(css_path, media_type="text/css")
+        response = FileResponse(css_path, media_type="text/css")
+        response.headers["Cache-Control"] = "public, max-age=3600, must-revalidate"
+        response.headers["ETag"] = f'"{hashlib.md5(str(os.path.getmtime(css_path)).encode()).hexdigest()}"'
+        return response
     raise HTTPException(status_code=404, detail="CSS файл не найден")
 
 @app.get("/script.js")
 async def serve_js():
-    """Отдача JavaScript файла"""
+    """Отдача JavaScript файла с антикешированием"""
     js_path = BASE_DIR / "script.js"
     if js_path.exists():
-        return FileResponse(js_path, media_type="application/javascript")
+        response = FileResponse(js_path, media_type="application/javascript")
+        response.headers["Cache-Control"] = "public, max-age=3600, must-revalidate"
+        response.headers["ETag"] = f'"{hashlib.md5(str(os.path.getmtime(js_path)).encode()).hexdigest()}"'
+        return response
     raise HTTPException(status_code=404, detail="JS файл не найден")
 
 @app.get("/manifest.json")
@@ -130,8 +155,44 @@ async def serve_service_worker():
     """Отдача Service Worker"""
     sw_path = BASE_DIR / "service-worker.js"
     if sw_path.exists():
-        return FileResponse(sw_path, media_type="application/javascript")
+        response = FileResponse(sw_path, media_type="application/javascript")
+        response.headers["Cache-Control"] = "no-cache, max-age=0"
+        return response
     raise HTTPException(status_code=404, detail="Service Worker не найден")
+
+# ===== API ДЛЯ ОБНОВЛЕНИЙ =====
+@app.get("/api/version")
+async def get_version():
+    """Возвращает версию приложения"""
+    return {
+        "version": "2.0.1",
+        "build_date": datetime.now().isoformat(),
+        "features": ["auto_update", "cache_control", "enhanced_earn"],
+        "requires_refresh": False,
+        "telegram_bot": "@rancasebot"
+    }
+
+@app.post("/api/clear-cache")
+async def clear_cache(request: UpdateRequest):
+    """Очистка кеша"""
+    return {
+        "success": True,
+        "message": "Кеш будет очищен при следующей загрузке",
+        "timestamp": time.time(),
+        "force_refresh": request.force,
+        "next_version": "2.0.1"
+    }
+
+@app.get("/api/check-update")
+async def check_update():
+    """Проверка обновлений"""
+    return {
+        "update_available": False,
+        "current_version": "2.0.1",
+        "latest_version": "2.0.1",
+        "changelog": "Автоматическое обновление кеша",
+        "priority": "low"
+    }
 
 # Валидация данных из Telegram
 def validate_telegram_data(init_data: str) -> Dict[str, Any]:
@@ -228,7 +289,7 @@ async def verify_telegram_auth(
         
         if not authorization:
             logger.warning("Отсутствует заголовок Authorization")
-            if request.url.path in ["/api/health", "/api/available-promos", "/api/test", "/", "/script.js", "/style.css", "/manifest.json", "/service-worker.js"]:
+            if request.url.path in ["/api/health", "/api/available-promos", "/api/test", "/", "/script.js", "/style.css", "/manifest.json", "/service-worker.js", "/api/version", "/api/check-update"]:
                 return {
                     'user': {'id': 1003215844, 'first_name': 'Test', 'username': 'test'}, 
                     'valid': True,
@@ -286,13 +347,15 @@ async def health_check():
         
         return {
             "status": "healthy", 
-            "service": "CS2 Bot API v2.0",
-            "version": "2.0.0",
+            "service": "CS2 Bot API v2.0.1",
+            "version": "2.0.1",
             "timestamp": time.time(),
             "database": "SQLite",
             "users_count": user_count,
             "telegram_bot": "connected" if TOKEN else "disconnected",
-            "debug_mode": os.environ.get('DEBUG_MODE', 'True')
+            "debug_mode": os.environ.get('DEBUG_MODE', 'True'),
+            "auto_update": True,
+            "cache_version": int(time.time())
         }
     except Exception as e:
         return {
@@ -368,7 +431,8 @@ async def get_user_data(auth_data: Dict[str, Any] = Depends(verify_telegram_auth
             "daily_streak": stats.get('daily_streak', 0),
             "telegram_profile_verified": bool(stats.get('telegram_verified')),
             "steam_profile_verified": bool(stats.get('steam_verified')),
-            "server_time": time.time()
+            "server_time": time.time(),
+            "cache_version": int(time.time() / 3600)  # Меняется каждый час
         }
         
         return response
@@ -442,7 +506,8 @@ async def get_demo_user_data(user_info: Dict[str, Any]) -> Dict[str, Any]:
         "telegram_profile_verified": True,
         "steam_profile_verified": True,
         "server_time": time.time(),
-        "demo_mode": True
+        "demo_mode": True,
+        "cache_version": int(time.time() / 3600)
     }
 
 @app.post("/api/open-case")
@@ -1366,7 +1431,7 @@ async def test_endpoint():
         
         return {
             "success": True,
-            "message": "API v2.0 работает корректно",
+            "message": "API v2.0.1 работает корректно",
             "timestamp": time.time(),
             "database": "SQLite",
             "stats": stats,
@@ -1382,7 +1447,9 @@ async def test_endpoint():
                 "/api/earn/check-telegram",
                 "/api/earn/check-steam",
                 "/api/earn/invite-friend",
-                "/api/earn/referral-info"
+                "/api/earn/referral-info",
+                "/api/version",
+                "/api/check-update"
             ]
         }
     except Exception as e:
@@ -1469,6 +1536,28 @@ def get_next_bonus_time(user_id: int) -> int:
     
     return int(next_bonus_time.timestamp())
 
+# Middleware для управления кешем
+@app.middleware("http")
+async def add_cache_headers(request: Request, call_next):
+    response = await call_next(request)
+    
+    # Для статических файлов - кешировать, но с проверкой
+    if request.url.path.endswith(('.css', '.js', '.json', '.ico')):
+        response.headers["Cache-Control"] = "public, max-age=3600, must-revalidate"
+        response.headers["ETag"] = f'"{hashlib.md5(str(time.time()).encode()).hexdigest()}"'
+    # Для API - не кешировать
+    elif request.url.path.startswith('/api/'):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    # Для HTML - не кешировать
+    elif request.url.path == '/':
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    
+    return response
+
 # Middleware для логирования
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -1505,10 +1594,11 @@ async def preflight_handler(request: Request, rest_of_path: str):
 @app.on_event("startup")
 async def startup_event():
     """Инициализация при запуске сервера"""
-    logger.info("🚀 Запуск CS2 Bot API сервера v2.0...")
+    logger.info("🚀 Запуск CS2 Bot API сервера v2.0.1...")
     logger.info("📊 База данных: SQLite")
     logger.info(f"🤖 Токен бота: {TOKEN[:8]}...{TOKEN[-4:] if len(TOKEN) > 12 else ''}")
     logger.info(f"🔧 Режим отладки: {os.environ.get('DEBUG_MODE', 'True')}")
+    logger.info("🔄 Автоматическое обновление кеша: ВКЛЮЧЕНО")
 
 # Точка входа для WSGI
 if __name__ == "__main__":
