@@ -289,7 +289,7 @@ async def verify_telegram_auth(
         
         if not authorization:
             logger.warning("Отсутствует заголовок Authorization")
-            if request.url.path in ["/api/health", "/api/available-promos", "/api/test", "/", "/script.js", "/style.css", "/manifest.json", "/service-worker.js", "/api/version", "/api/check-update"]:
+            if request.url.path in ["/api/health", "/api/available-promos", "/api/test", "/", "/script.js", "/style.css", "/manifest.json", "/service-worker.js", "/api/version", "/api/check-update", "/api/can-use-referral"]:
                 return {
                     'user': {'id': 1003215844, 'first_name': 'Test', 'username': 'test'}, 
                     'valid': True,
@@ -363,6 +363,52 @@ async def health_check():
             "error": str(e),
             "timestamp": time.time()
         }
+
+@app.get("/api/can-use-referral")
+async def check_can_use_referral(auth_data: Dict[str, Any] = Depends(verify_telegram_auth)):
+    """Проверяет, может ли пользователь ввести реферальный код"""
+    try:
+        user_info = auth_data['user']
+        demo_mode = auth_data.get('demo_mode', False)
+        user_id = user_info.get('id')
+        
+        if not user_id:
+            raise HTTPException(status_code=400, detail="ID пользователя не найден")
+        
+        if demo_mode:
+            # В демо-режиме всегда можно использовать в течение 5 минут
+            demo_time_left = 300  # 5 минут
+            return {
+                "success": True,
+                "can_use": True,
+                "time_left": demo_time_left,
+                "minutes_left": demo_time_left / 60,
+                "message": "Вы можете ввести реферальный код",
+                "demo_mode": True
+            }
+        
+        # Получаем пользователя
+        user = db.get_user(telegram_id=user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="Пользователь не найден")
+        
+        # Используем метод из базы данных для проверки
+        result = db.can_use_referral_code(user['id'])
+        
+        return {
+            "success": True,
+            "can_use": result["can_use"],
+            "time_left": result.get("time_left", 0),
+            "minutes_left": result.get("minutes_left", 0),
+            "message": result.get("reason", ""),
+            "created_at": result.get("created_at")
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка проверки возможности ввода кода: {e}")
+        raise HTTPException(status_code=500, detail="Ошибка сервера")
 
 @app.get("/api/user")
 async def get_user_data(auth_data: Dict[str, Any] = Depends(verify_telegram_auth)):
@@ -1449,7 +1495,8 @@ async def test_endpoint():
                 "/api/earn/invite-friend",
                 "/api/earn/referral-info",
                 "/api/version",
-                "/api/check-update"
+                "/api/check-update",
+                "/api/can-use-referral"
             ]
         }
     except Exception as e:
