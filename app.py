@@ -1484,7 +1484,7 @@ async def log_requests(request: Request, call_next):
         logger.info(f"👈 {request.method} {request.url.path} - {response.status_code} - {process_time:.3f}s")
     
     response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, HEAD"
     response.headers["Access-Control-Allow-Headers"] = "*"
     response.headers["Access-Control-Allow-Credentials"] = "true"
     
