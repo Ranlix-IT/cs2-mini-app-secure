@@ -374,7 +374,7 @@ async def get_demo_user_data(user_info: Dict[str, Any]) -> Dict[str, Any]:
             "total_referrals": 3,
             "active_referrals": 3,
             "referral_code": f"ref_{user_info.get('id', 1003215844)}",
-            "referral_link": f"https://t.me/MeteoHinfoBot?start=ref_{user_info.get('id', 1003215844)}"
+            "referral_link": f"https://t.me/rancasebot?start=ref_{user_info.get('id', 1003215844)}"
         },
         "inventory": [
             {
