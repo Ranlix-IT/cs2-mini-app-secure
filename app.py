@@ -38,9 +38,7 @@ TOKEN = "7836761722:AAGzXQjiYuX_MOM9ZpMvrVtBx3175giOprQ"
 ADMIN_IDS = [1003215844]
 REQUIRED_CHANNEL = "@ranworkcs"
 
-# Подключаем статические файлы
 BASE_DIR = Path(__file__).resolve().parent
-app.mount("/static", StaticFiles(directory=str(BASE_DIR)), name="static")
 
 # Настройка CORS для Telegram Mini Apps
 app.add_middleware(
@@ -76,6 +74,64 @@ class CheckSteamProfileRequest(BaseModel):
 
 class InviteFriendRequest(BaseModel):
     referral_code: str
+
+# ===== ОБРАБОТЧИКИ СТАТИЧЕСКИХ ФАЙЛОВ =====
+@app.get("/")
+async def serve_root():
+    """Главная HTML страница"""
+    try:
+        index_path = BASE_DIR / "index.html"
+        if index_path.exists():
+            with open(index_path, 'r', encoding='utf-8') as f:
+                html_content = f.read()
+            return HTMLResponse(content=html_content)
+        else:
+            return HTMLResponse(content="""
+                <!DOCTYPE html>
+                <html>
+                <head><title>CS2 Bot API</title></head>
+                <body>
+                    <h1>CS2 Bot API v2.0</h1>
+                    <p>API сервер работает нормально</p>
+                    <p><a href="/docs">Документация API</a></p>
+                </body>
+                </html>
+            """)
+    except Exception as e:
+        logger.error(f"Ошибка загрузки index.html: {e}")
+        raise HTTPException(status_code=500, detail="Ошибка загрузки страницы")
+
+@app.get("/style.css")
+async def serve_css():
+    """Отдача CSS файла"""
+    css_path = BASE_DIR / "style.css"
+    if css_path.exists():
+        return FileResponse(css_path, media_type="text/css")
+    raise HTTPException(status_code=404, detail="CSS файл не найден")
+
+@app.get("/script.js")
+async def serve_js():
+    """Отдача JavaScript файла"""
+    js_path = BASE_DIR / "script.js"
+    if js_path.exists():
+        return FileResponse(js_path, media_type="application/javascript")
+    raise HTTPException(status_code=404, detail="JS файл не найден")
+
+@app.get("/manifest.json")
+async def serve_manifest():
+    """Отдача manifest.json"""
+    manifest_path = BASE_DIR / "manifest.json"
+    if manifest_path.exists():
+        return FileResponse(manifest_path, media_type="application/json")
+    raise HTTPException(status_code=404, detail="Manifest файл не найден")
+
+@app.get("/service-worker.js")
+async def serve_service_worker():
+    """Отдача Service Worker"""
+    sw_path = BASE_DIR / "service-worker.js"
+    if sw_path.exists():
+        return FileResponse(sw_path, media_type="application/javascript")
+    raise HTTPException(status_code=404, detail="Service Worker не найден")
 
 # Валидация данных из Telegram
 def validate_telegram_data(init_data: str) -> Dict[str, Any]:
@@ -172,7 +228,7 @@ async def verify_telegram_auth(
         
         if not authorization:
             logger.warning("Отсутствует заголовок Authorization")
-            if request.url.path in ["/api/health", "/api/available-promos", "/api/test", "/", "/script.js", "/style.css"]:
+            if request.url.path in ["/api/health", "/api/available-promos", "/api/test", "/", "/script.js", "/style.css", "/manifest.json", "/service-worker.js"]:
                 return {
                     'user': {'id': 1003215844, 'first_name': 'Test', 'username': 'test'}, 
                     'valid': True,
@@ -215,27 +271,6 @@ async def verify_telegram_auth(
         raise HTTPException(status_code=500, detail="Ошибка сервера при проверке аутентификации")
 
 # ===== API ENDPOINTS =====
-
-@app.get("/", response_class=HTMLResponse)
-async def serve_index():
-    """Отдача главной HTML страницы"""
-    try:
-        index_path = BASE_DIR / "index.html"
-        if index_path.exists():
-            with open(index_path, 'r', encoding='utf-8') as f:
-                html_content = f.read()
-            return HTMLResponse(content=html_content)
-        else:
-            return {
-                "status": "online", 
-                "service": "CS2 Bot API v2.0",
-                "version": "2.0.0",
-                "database": "SQLite",
-                "timestamp": time.time()
-            }
-    except Exception as e:
-        logger.error(f"Ошибка загрузки index.html: {e}")
-        raise HTTPException(status_code=500, detail="Ошибка загрузки страницы")
 
 @app.get("/api/health")
 async def health_check():
@@ -633,7 +668,7 @@ async def claim_daily_bonus(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Ошибка получения бонуса: {e}")
+        logger.error(f"Ошибка получения бонусов: {e}")
         raise HTTPException(status_code=500, detail="Ошибка сервера")
 
 async def claim_daily_bonus_demo() -> Dict[str, Any]:
@@ -1439,13 +1474,13 @@ def get_next_bonus_time(user_id: int) -> int:
 async def log_requests(request: Request, call_next):
     start_time = time.time()
     
-    if request.url.path != "/api/health" and not request.url.path.endswith(('.js', '.css', '.ico')):
+    if request.url.path != "/api/health" and not request.url.path.endswith(('.js', '.css', '.ico', '.json')):
         logger.info(f"👉 {request.method} {request.url.path} - Client: {request.client.host if request.client else 'unknown'}")
     
     response = await call_next(request)
     process_time = time.time() - start_time
     
-    if request.url.path != "/api/health" and not request.url.path.endswith(('.js', '.css', '.ico')):
+    if request.url.path != "/api/health" and not request.url.path.endswith(('.js', '.css', '.ico', '.json')):
         logger.info(f"👈 {request.method} {request.url.path} - {response.status_code} - {process_time:.3f}s")
     
     response.headers["Access-Control-Allow-Origin"] = "*"
