@@ -1169,10 +1169,10 @@ function updateProfileStatuses(telegramStatus, steamStatus) {
 }
 
 // Функция проверки Telegram профиля
-async function checkTelegramProfile() {
+rancasebot
     try {
         const response = await apiRequest('/api/earn/check-telegram', 'POST', {
-            last_name: "RANcaseBot",
+            last_name: "rancasebot",
             bio: "Играй в CS2 с ботом @rancasebot!"
         });
         
@@ -1742,3 +1742,4 @@ window.inviteFriend = inviteFriend;
 window.copyEnhancedReferralLink = copyEnhancedReferralLink;
 
 console.log("📦 CS2 Skin Bot скрипт загружен!");
+
