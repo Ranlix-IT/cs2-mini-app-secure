@@ -1422,6 +1422,144 @@ function showRewardNotification(title, amount) {
     }, 5000);
 }
 
+// ===== ФУНКЦИОНАЛ ПРИГЛАШЕНИЯ ДРУЗЕЙ =====
+async function showInviteFriendUI() {
+    const inviteSection = document.createElement('div');
+    inviteSection.className = 'invite-friend-section page-section';
+    inviteSection.id = 'invite-friend-section';
+    inviteSection.style.display = 'none';
+    
+    inviteSection.innerHTML = `
+        <div class="section-header">
+            <button class="back-btn" onclick="closeInviteFriendSection()">
+                <i class="fas fa-arrow-left"></i>
+            </button>
+            <h2><i class="fas fa-user-plus"></i> Пригласить друга</h2>
+        </div>
+        
+        <div class="invite-container">
+            <div class="invite-methods">
+                <div class="invite-method-card" onclick="copyReferralLinkInput()">
+                    <div class="invite-icon">
+                        <i class="fas fa-copy"></i>
+                    </div>
+                    <div class="invite-info">
+                        <h4>Скопировать ссылку</h4>
+                        <p>Скопируйте ссылку и отправьте другу</p>
+                    </div>
+                </div>
+                
+                <div class="invite-method-card" onclick="shareViaTelegram()">
+                    <div class="invite-icon">
+                        <i class="fab fa-telegram"></i>
+                    </div>
+                    <div class="invite-info">
+                        <h4>Поделиться в Telegram</h4>
+                        <p>Выберите чат и отправьте ссылку</p>
+                    </div>
+                </div>
+                
+                <div class="invite-method-card" onclick="generateInviteQR()">
+                    <div class="invite-icon">
+                        <i class="fas fa-qrcode"></i>
+                    </div>
+                    <div class="invite-info">
+                        <h4>QR-код</h4>
+                        <p>Поделитесь QR-кодом с друзьями</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="invite-preview">
+                <h4>Ваша реферальная ссылка:</h4>
+                <div class="referral-link-box">
+                    <input type="text" 
+                           id="referral-link-display" 
+                           value="${enhancedEarnState.referralLink || appState.referralLink || 'Загрузка...'}" 
+                           readonly>
+                    <button class="copy-btn" onclick="copyReferralLinkInput()">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                </div>
+                
+                <div class="invite-stats">
+                    <div class="invite-stat">
+                        <div class="stat-label">Приглашено друзей</div>
+                        <div class="stat-value" id="invited-friends-count">${appState.referralsCount || 0}</div>
+                    </div>
+                    <div class="invite-stat">
+                        <div class="stat-label">Заработано баллов</div>
+                        <div class="stat-value" id="referral-earnings">${appState.referralsCount * 500 || 0}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.querySelector('.main-content').appendChild(inviteSection);
+}
+
+function copyReferralLinkInput() {
+    const input = document.getElementById('referral-link-display');
+    if (input && input.value) {
+        input.select();
+        input.setSelectionRange(0, 99999);
+        
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(input.value)
+                .then(() => showToast('Успех!', 'Ссылка скопирована', 'success'))
+                .catch(() => fallbackCopy(input.value));
+        } else {
+            fallbackCopy(input.value);
+        }
+    }
+}
+
+function shareViaTelegram() {
+    const referralLink = enhancedEarnState.referralLink || appState.referralLink;
+    if (!referralLink) {
+        showToast('Ошибка', 'Реферальная ссылка не найдена', 'error');
+        return;
+    }
+    
+    // Открываем Telegram для выбора чата
+    const shareText = `🎮 Присоединяйся к боту для получения скинов CS2!\n\n${referralLink}`;
+    
+    if (tg && tg.openTelegramLink) {
+        // Используем метод из Telegram Web App SDK
+        tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=${encodeURIComponent('Присоединяйся к боту для получения скинов CS2!')}`);
+    } else {
+        // Fallback для демо режима
+        window.open(`https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=${encodeURIComponent('Присоединяйся к боту для получения скинов CS2!')}`, '_blank');
+        showToast('Открыт Telegram', 'Выберите чат для отправки ссылки', 'info');
+    }
+}
+
+function generateInviteQR() {
+    const referralLink = enhancedEarnState.referralLink || appState.referralLink;
+    if (!referralLink) return;
+    
+    // В демо режиме просто покажем сообщение
+    showToast('QR-код', 'В реальном режиме здесь будет QR-код', 'info');
+    
+    // В реальном приложении можно использовать библиотеку QRCode.js
+    // Пример: new QRCode(document.getElementById("qrcode"), referralLink);
+}
+
+function openInviteFriendSection() {
+    showInviteFriendUI();
+    openSection('invite-friend');
+}
+
+function closeInviteFriendSection() {
+    const inviteSection = document.getElementById('invite-friend-section');
+    if (inviteSection) {
+        inviteSection.style.display = 'none';
+        inviteSection.classList.add('hidden');
+    }
+    backToMain();
+}
+
 function initEnhancedEarning() {
     const checkTelegramBtn = document.getElementById('check-telegram-btn');
     const checkSteamBtn = document.getElementById('check-steam-btn');
@@ -1442,7 +1580,7 @@ function initEnhancedEarning() {
     
     if (inviteFriendBtn) {
         inviteFriendBtn.addEventListener('click', function() { 
-            debounce(inviteFriend); 
+            openInviteFriendSection(); 
         });
     }
     
@@ -1778,5 +1916,10 @@ window.checkTelegramProfile = checkTelegramProfile;
 window.checkSteamProfile = checkSteamProfile;
 window.inviteFriend = inviteFriend;
 window.copyEnhancedReferralLink = copyEnhancedReferralLink;
+window.openInviteFriendSection = openInviteFriendSection;
+window.closeInviteFriendSection = closeInviteFriendSection;
+window.copyReferralLinkInput = copyReferralLinkInput;
+window.shareViaTelegram = shareViaTelegram;
+window.generateInviteQR = generateInviteQR;
 
 console.log("📦 CS2 Skin Bot скрипт загружен!");
