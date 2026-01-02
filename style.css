@@ -45,6 +45,88 @@ body {
     background: var(--dark-bg);
 }
 
+/* ===== УВЕДОМЛЕНИЯ ОБ ОБНОВЛЕНИЯХ ===== */
+.update-notification {
+    position: fixed;
+    top: 70px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+    color: white;
+    padding: 12px 20px;
+    border-radius: var(--border-radius);
+    z-index: 10001;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 5px 20px rgba(102, 126, 234, 0.3);
+    animation: slideDown 0.3s ease;
+    max-width: 90%;
+}
+
+.update-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+}
+
+.update-content i {
+    font-size: 20px;
+    animation: spin 2s linear infinite;
+}
+
+.update-text {
+    flex: 1;
+}
+
+.update-text h4 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+
+.update-text p {
+    font-size: 12px;
+    opacity: 0.9;
+}
+
+.update-btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    color: white;
+    font-size: 12px;
+    cursor: pointer;
+    transition: var(--transition);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.update-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: rotate(90deg);
+}
+
+@keyframes slideDown {
+    from {
+        transform: translate(-50%, -100%);
+        opacity: 0;
+    }
+    to {
+        transform: translate(-50%, 0);
+        opacity: 1;
+    }
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
 /* ===== HEADER ===== */
 .app-header {
     background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
@@ -169,6 +251,12 @@ body {
 .bonus-btn:hover {
     transform: translateY(-2px);
     box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+}
+
+.bonus-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+    transform: none;
 }
 
 .bonus-timer {
@@ -1337,11 +1425,6 @@ body {
     animation: spin 2s linear infinite;
 }
 
-@keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-}
-
 #opening-text {
     margin-bottom: 30px;
     font-size: 20px;
@@ -1362,7 +1445,6 @@ body {
     50% { transform: translateY(-10px); }
 }
 
-/* Улучшенный дизайн кнопки закрытия */
 .close-case-btn {
     background: linear-gradient(135deg, var(--danger-color) 0%, #c53030 100%);
     color: white;
@@ -1410,7 +1492,6 @@ body {
     transform: translateY(0);
 }
 
-/* Улучшенное окно с выигранным предметом */
 .won-item-content {
     padding: 20px;
     text-align: center;
@@ -1443,7 +1524,6 @@ body {
     border-radius: 8px;
 }
 
-/* Анимация для выигранного предмета */
 @keyframes confetti {
     0% { transform: translateY(-100px) rotate(0deg); opacity: 0; }
     100% { transform: translateY(0) rotate(360deg); opacity: 1; }
