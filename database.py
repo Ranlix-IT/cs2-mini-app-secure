@@ -546,7 +546,7 @@ class Database:
             "active_referrals": len([r for r in referrals]),
             "referral_code": user["referral_code"] if user else None,
             "referred_by": user["referred_by"] if user else None,
-            "referral_link": f"https://t.me/MeteoHinfoBot?start={user['referral_code']}" if user else None
+            "referral_link": f"https://t.me/rancasebot?start={user['referral_code']}" if user else None
         }
     
     # === ПРОВЕРКА TELEGRAM ПРОФИЛЯ ===
