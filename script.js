@@ -26,6 +26,9 @@ let enhancedEarnState = {
 // Таймер для реферального кода
 let referralTimerInterval = null;
 
+// Флаг для предотвращения двойных кликов
+let isProcessing = false;
+
 // ===== ИНИЦИАЛИЗАЦИЯ =====
 document.addEventListener('DOMContentLoaded', function() {
     console.log("🚀 CS2 Skin Bot запускается...");
@@ -52,9 +55,6 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Запуск периодической проверки обновлений
     startUpdateChecker();
-    
-    // Отладка: добавляем глобальную функцию
-    window.debugTelegram = debugTelegramData;
 });
 
 // ===== АВТОМАТИЧЕСКОЕ ОБНОВЛЕНИЕ =====
@@ -445,8 +445,6 @@ function useTestData() {
 }
 
 // ===== УТИЛИТЫ ДЛЯ ПРЕДОТВРАЩЕНИЯ ДВОЙНЫХ КЛИКОВ =====
-let isProcessing = false;
-
 function debounce(func, delay = 300) {
     if (isProcessing) return;
     
@@ -1872,7 +1870,7 @@ function updateInventoryUI() {
     
     let totalPrice = 0;
     
-    appState.inventory.forEach((item, index) => {
+    appState.inventory.forEach((item) => {
         totalPrice += item.price || 0;
         
         const itemElement = document.createElement('div');
@@ -2150,3 +2148,61 @@ window.shareViaTelegram = shareViaTelegram;
 window.debugTelegramData = debugTelegramData;
 
 console.log("📦 CS2 Skin Bot скрипт загружен!");
+
+// === DEBUG UTILITIES (FOR DEVELOPERS ONLY) ===
+if (typeof window !== 'undefined') {
+    // Команда в консоли: debugTelegram()
+    window.debugTelegram = function() {
+        if (!window.Telegram || !window.Telegram.WebApp) {
+            console.error("❌ Telegram SDK not loaded");
+            return null;
+        }
+        
+        const tg = window.Telegram.WebApp;
+        const debugInfo = {
+            platform: tg.platform,
+            version: tg.version,
+            hasInitData: !!tg.initData,
+            initDataLength: tg.initData?.length || 0,
+            user: tg.initDataUnsafe?.user,
+            authDate: tg.initDataUnsafe?.auth_date,
+            themeParams: tg.themeParams
+        };
+        
+        console.table(debugInfo);
+        
+        if (tg.initData) {
+            console.log("initData (first 200 chars):", tg.initData.substring(0, 200));
+        }
+        
+        return debugInfo;
+    };
+    
+    // Команда в консоли: testAPI()
+    window.testAPI = async function() {
+        console.log("🧪 Testing API...");
+        
+        try {
+            // Test without auth
+            const health = await fetch('/api/health');
+            console.log("✅ /api/health:", await health.json());
+            
+            // Test with Telegram auth
+            if (window.Telegram?.WebApp?.initData) {
+                const user = await fetch('/api/user', {
+                    headers: { 'Authorization': `tma ${window.Telegram.WebApp.initData}` }
+                });
+                console.log("✅ /api/user status:", user.status);
+                if (user.ok) {
+                    console.log("✅ /api/user data:", await user.json());
+                }
+            }
+        } catch (error) {
+            console.error("❌ API test failed:", error);
+        }
+    };
+    
+    console.log("🔧 Debug commands available:");
+    console.log("  - debugTelegram() - Show Telegram data");
+    console.log("  - testAPI() - Test API endpoints");
+}
