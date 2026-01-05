@@ -47,9 +47,225 @@
             z-index: 9999;
             display: none;
         }
+        
+        /* Telegram Login Button */
+        .telegram-login-btn {
+            display: inline-flex;
+            align-items: center;
+            background: #0088cc;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            text-decoration: none;
+            transition: background 0.3s;
+            margin: 10px;
+        }
+        
+        .telegram-login-btn:hover {
+            background: #0077b5;
+        }
+        
+        .telegram-login-btn i {
+            margin-right: 10px;
+            font-size: 20px;
+        }
+        
+        /* Модальное окно авторизации */
+        .auth-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 10000;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        .auth-modal.active {
+            display: flex;
+        }
+        
+        .auth-modal-content {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+            color: white;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+        
+        .auth-modal h3 {
+            margin-top: 0;
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        
+        .auth-modal p {
+            margin-bottom: 30px;
+            opacity: 0.9;
+        }
+        
+        .auth-modal .close-btn {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: none;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            opacity: 0.7;
+            transition: opacity 0.3s;
+        }
+        
+        .auth-modal .close-btn:hover {
+            opacity: 1;
+        }
+        
+        .auth-options {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .auth-btn {
+            background: white;
+            color: #667eea;
+            border: none;
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            font-weight: bold;
+            transition: transform 0.2s;
+        }
+        
+        .auth-btn:hover {
+            transform: translateY(-2px);
+        }
+        
+        .auth-btn.demo {
+            background: #f0f0f0;
+            color: #666;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        /* Кнопка входа в углу */
+        .login-corner-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 9998;
+            background: #0088cc;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 25px;
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 15px rgba(0, 136, 204, 0.3);
+            transition: all 0.3s;
+        }
+        
+        .login-corner-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 136, 204, 0.4);
+            background: #0077b5;
+        }
+        
+        .login-corner-btn i {
+            font-size: 16px;
+        }
+        
+        /* Индикатор авторизации */
+        .auth-indicator {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(76, 175, 80, 0.9);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            z-index: 9997;
+            display: none;
+            align-items: center;
+            gap: 6px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .auth-indicator i {
+            font-size: 14px;
+        }
+        
+        .auth-indicator.unauthorized {
+            background: rgba(244, 67, 54, 0.9);
+        }
     </style>
 </head>
 <body>
+    <!-- Индикатор авторизации -->
+    <div id="auth-indicator" class="auth-indicator">
+        <i class="fas fa-user"></i>
+        <span id="auth-status">Не авторизован</span>
+    </div>
+    
+    <!-- Кнопка входа в правом нижнем углу -->
+    <button id="login-corner-btn" class="login-corner-btn">
+        <i class="fab fa-telegram"></i>
+        <span>Войти</span>
+    </button>
+    
+    <!-- Модальное окно авторизации -->
+    <div id="auth-modal" class="auth-modal">
+        <div class="auth-modal-content">
+            <button class="close-btn" id="close-auth-modal">&times;</button>
+            <h3><i class="fab fa-telegram"></i> Вход в CS2 Bot</h3>
+            <p>Авторизуйтесь для доступа ко всем функциям приложения</p>
+            
+            <!-- Telegram Login Widget -->
+            <script async 
+                src="https://telegram.org/js/telegram-widget.js?22" 
+                data-telegram-login="rancasebot" 
+                data-size="large" 
+                data-auth-url="https://cs2-mini-app.onrender.com/api/telegram-auth-simple" 
+                data-request-access="write">
+            </script>
+            
+            <div class="auth-options">
+                <button class="auth-btn demo" id="demo-auth-btn">
+                    <i class="fas fa-user"></i>
+                    Попробовать демо-режим
+                </button>
+                
+                <p style="font-size: 12px; opacity: 0.7; margin-top: 20px;">
+                    Для полного доступа рекомендуется использовать Telegram Mini App
+                </p>
+            </div>
+        </div>
+    </div>
+
     <div class="app-container">
         <!-- Header -->
         <header class="app-header">
@@ -729,7 +945,7 @@
                     
                     <a class="menu-item logout" id="logout-btn">
                         <i class="fas fa-sign-out-alt"></i>
-                        <span>Закрыть приложение</span>
+                        <span>Выйти из аккаунта</span>
                     </a>
                 </div>
             </div>
