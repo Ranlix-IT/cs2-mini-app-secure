@@ -7,12 +7,11 @@ let appState = {
     dailyBonusAvailable: true,
     referralCode: "",
     tradeLink: "",
-    referralsCount: 0,
-    authType: "none" // "telegram", "browser", "demo", "none"
+    referralsCount: 0
 };
 
 const API_BASE_URL = "https://cs2-mini-app.onrender.com";
-const APP_VERSION = "2.1.0";
+const APP_VERSION = "2.0.1";
 
 // Улучшенная система заработка
 let enhancedEarnState = {
@@ -27,57 +26,40 @@ let enhancedEarnState = {
 // Таймер для реферального кода
 let referralTimerInterval = null;
 
-// Флаг для предотвращения двойных кликов
-let isProcessing = false;
-
-// Флаг авторизации
-let isAuthenticated = false;
-
-// ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
-
-function debounce(func, delay = 300) {
-    if (isProcessing) return;
+// ===== ИНИЦИАЛИЗАЦИЯ =====
+document.addEventListener('DOMContentLoaded', function() {
+    console.log("🚀 CS2 Skin Bot запускается...");
     
-    isProcessing = true;
-    func();
+    // Проверка обновлений
+    checkForUpdates();
     
+    initializeTelegramApp();
+    setupEventListeners();
+    updateBonusTimer();
+    setInterval(updateBonusTimer, 1000);
+    
+    // Сразу обновляем UI для демо
+    updateUserInfo();
+    updateInventoryUI();
+    updateProfileInfo();
+    
+    // Инициализируем улучшенный заработок
     setTimeout(() => {
-        isProcessing = false;
-    }, delay);
-}
-
-function showToast(title, message, type = 'info') {
-    const container = document.getElementById('toast-container');
-    if (!container) return;
+        initEnhancedEarning();
+        loadEarnData();
+    }, 500);
     
-    const toast = document.createElement('div');
-    toast.className = `toast ${type}`;
-    toast.innerHTML = `
-        <div class="toast-icon">
-            <i class="fas fa-${type === 'success' ? 'check-circle' : 
-                              type === 'error' ? 'exclamation-circle' : 
-                              type === 'warning' ? 'exclamation-triangle' : 'info-circle'}"></i>
-        </div>
-        <div class="toast-content">
-            <div class="toast-title">${title}</div>
-            <div class="toast-message">${message}</div>
-        </div>
-    `;
+    // Тестируем API соединение
+    setTimeout(testAPIConnection, 1000);
     
-    container.appendChild(toast);
+    // Регистрация Service Worker для PWA
+    registerServiceWorker();
     
-    setTimeout(() => {
-        toast.classList.add('hiding');
-        setTimeout(() => {
-            if (toast.parentNode) {
-                toast.parentNode.removeChild(toast);
-            }
-        }, 300);
-    }, 5000);
-}
+    // Запуск периодической проверки обновлений
+    startUpdateChecker();
+});
 
 // ===== АВТОМАТИЧЕСКОЕ ОБНОВЛЕНИЕ =====
-
 function checkForUpdates() {
     const lastVersion = localStorage.getItem('app_version');
     const lastUpdate = localStorage.getItem('last_update');
@@ -101,7 +83,7 @@ function checkForUpdates() {
 
 function clearOldCache() {
     // Очищаем старые данные localStorage (кроме важных)
-    const keepKeys = ['user_preferences', 'app_version', 'last_update', 'telegram_auth_data'];
+    const keepKeys = ['user_preferences', 'app_version', 'last_update'];
     Object.keys(localStorage).forEach(key => {
         if (!keepKeys.includes(key) && !key.startsWith('telegram_')) {
             localStorage.removeItem(key);
@@ -150,7 +132,7 @@ async function checkServerForUpdates() {
             console.log('✅ Сервер доступен, версия:', data.version);
             
             // Проверяем версию API
-            if (data.version && data.version !== APP_VERSION) {
+            if (data.version && data.version !== "2.0.0") {
                 showUpdateNotification('Доступно обновление API', 'Перезагрузите приложение для получения новых функций');
             }
         }
@@ -196,6 +178,7 @@ function showUpdateNotification(title, message) {
     }
 }
 
+// Регистрация Service Worker
 function registerServiceWorker() {
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', function() {
@@ -223,441 +206,115 @@ function registerServiceWorker() {
     }
 }
 
-// ===== ИНИЦИАЛИЗАЦИЯ ПРИЛОЖЕНИЯ =====
-
-function initializeApp() {
-    console.log("📱 Инициализация приложения...");
-    
-    // 1. Пробуем получить данные из Telegram Mini App
-    if (typeof window.Telegram !== 'undefined' && window.Telegram.WebApp) {
-        tg = window.Telegram.WebApp;
-        
-        if (tg.initData || tg.initDataUnsafe?.user) {
-            console.log("✅ Обнаружен Telegram Mini App");
-            initializeTelegramApp();
-            return;
-        }
-    }
-    
-    // 2. Проверяем браузерную авторизацию
-    const savedAuth = localStorage.getItem('telegram_auth_data');
-    if (savedAuth) {
-        try {
-            const authData = JSON.parse(savedAuth);
-            console.log("✅ Обнаружена сохраненная браузерная авторизация");
-            
-            // Проверяем не устарели ли данные (больше 7 дней)
-            const authDate = authData.auth_date;
-            const now = Date.now();
-            const sevenDays = 7 * 24 * 60 * 60 * 1000;
-            
-            if (now - authDate < sevenDays) {
-                appState.user = {
-                    id: authData.user.id,
-                    firstName: authData.user.first_name || 'Пользователь',
-                    lastName: authData.user.last_name || '',
-                    username: authData.user.username || `user_${authData.user.id}`
-                };
-                
-                appState.authType = authData.demo_mode ? "demo" : "browser";
-                isAuthenticated = true;
-                
-                updateUserInfo();
-                updateAuthIndicator();
-                
-                // Загружаем данные пользователя
-                setTimeout(() => {
-                    loadUserData();
-                }, 500);
-                
-                return;
-            } else {
-                console.log("❌ Данные авторизации устарели");
-                localStorage.removeItem('telegram_auth_data');
-            }
-        } catch (e) {
-            console.error("Ошибка загрузки сохраненной авторизации:", e);
-            localStorage.removeItem('telegram_auth_data');
-        }
-    }
-    
-    // 3. Если нет авторизации, показываем кнопку входа
-    console.log("⚠️ Требуется авторизация");
-    showAuthButton();
-}
-
+// ===== TELEGRAM ИНИЦИАЛИЗАЦИЯ =====
 function initializeTelegramApp() {
     try {
+        if (typeof window.Telegram === 'undefined' || !window.Telegram.WebApp) {
+            console.error("❌ Telegram SDK не загружен");
+            setTimeout(initializeTelegramApp, 100);
+            return;
+        }
+        
+        tg = window.Telegram.WebApp;
         tg.ready();
         tg.expand();
         
         console.log('📱 Telegram WebApp версия:', tg.version);
-        console.log('📱 Telegram платформа:', tg.platform);
+        console.log('📱 Telegram initDataUnsafe:', tg.initDataUnsafe);
         
-        // Используем initData для авторизации
+        // Пытаемся получить данные пользователя
         if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
             const userData = tg.initDataUnsafe.user;
             appState.user = {
                 id: userData.id,
                 firstName: userData.first_name || 'Пользователь',
                 lastName: userData.last_name || '',
-                username: userData.username || `user_${userData.id}`,
-                language_code: userData.language_code || 'ru'
+                username: userData.username || `user_${userData.id}`
             };
-            
-            appState.authType = "telegram";
-            isAuthenticated = true;
             
             console.log("✅ Пользователь Telegram авторизован:", appState.user);
             
-            // Обновляем UI
-            updateUserInfo();
-            updateAuthIndicator();
-            
-            // Загружаем данные с сервера
-            setTimeout(() => {
-                loadUserData();
-            }, 500);
-            
+            // Загружаем реальные данные с сервера
+            loadUserData();
         } else {
             console.warn("⚠️ Данные пользователя Telegram не получены");
-            // Показываем кнопку входа
-            showAuthButton();
+            useTestData();
         }
-        
-        // Устанавливаем цветовую тему
-        setTelegramTheme();
         
     } catch (error) {
         console.error('❌ Ошибка инициализации Telegram:', error);
-        showAuthButton();
+        useTestData();
     }
 }
 
-function setTelegramTheme() {
-    if (tg) {
-        const primaryColor = tg.themeParams.button_color || '#667eea';
-        const bgColor = tg.themeParams.bg_color || '#1a202c';
-        const textColor = tg.themeParams.text_color || '#ffffff';
-        
-        document.documentElement.style.setProperty('--primary-color', primaryColor);
-        document.documentElement.style.setProperty('--secondary-color', primaryColor);
-        document.documentElement.style.setProperty('--dark-bg', bgColor);
-        document.documentElement.style.setProperty('--dark-card', '#2d3748');
-        document.documentElement.style.setProperty('--text-light', textColor);
-        
-        if (tg.colorScheme === 'dark') {
-            document.body.classList.add('telegram-dark');
-        } else {
-            document.body.classList.add('telegram-light');
-        }
-    }
-}
-
-function showAuthButton() {
-    // Показываем кнопку входа в правом нижнем углу
-    const loginBtn = document.getElementById('login-corner-btn');
-    if (loginBtn) {
-        loginBtn.style.display = 'flex';
-        
-        // Обновляем индикатор авторизации
-        updateAuthIndicator();
-    }
-}
-
-function updateAuthIndicator() {
-    const indicator = document.getElementById('auth-indicator');
-    const statusText = document.getElementById('auth-status');
+// ===== ТЕСТОВЫЕ ДАННЫЕ =====
+function useTestData() {
+    console.log("🔧 Используем тестовые данные");
     
-    if (!indicator || !statusText) return;
-    
-    if (isAuthenticated) {
-        indicator.style.display = 'flex';
-        indicator.classList.remove('unauthorized');
-        
-        let authText = '';
-        switch(appState.authType) {
-            case 'telegram':
-                authText = `Telegram: ${appState.user?.firstName || 'Пользователь'}`;
-                break;
-            case 'browser':
-                authText = `Браузер: ${appState.user?.firstName || 'Пользователь'}`;
-                break;
-            case 'demo':
-                authText = 'Демо-режим';
-                break;
-            default:
-                authText = 'Авторизован';
-        }
-        
-        statusText.textContent = authText;
-    } else {
-        indicator.style.display = 'flex';
-        indicator.classList.add('unauthorized');
-        statusText.textContent = 'Не авторизован';
-    }
-}
-
-function checkAuthStatus() {
-    // Проверяем авторизацию каждые 30 секунд
-    setInterval(() => {
-        if (!isAuthenticated) {
-            const savedAuth = localStorage.getItem('telegram_auth_data');
-            if (savedAuth) {
-                try {
-                    const authData = JSON.parse(savedAuth);
-                    const authDate = authData.auth_date;
-                    const now = Date.now();
-                    const sevenDays = 7 * 24 * 60 * 60 * 1000;
-                    
-                    if (now - authDate < sevenDays) {
-                        // Обновляем состояние
-                        appState.user = {
-                            id: authData.user.id,
-                            firstName: authData.user.first_name || 'Пользователь',
-                            lastName: authData.user.last_name || '',
-                            username: authData.user.username || `user_${authData.user.id}`
-                        };
-                        
-                        appState.authType = authData.demo_mode ? "demo" : "browser";
-                        isAuthenticated = true;
-                        
-                        updateUserInfo();
-                        updateAuthIndicator();
-                        
-                        console.log("✅ Авторизация восстановлена");
-                    }
-                } catch (e) {
-                    console.error("Ошибка проверки авторизации:", e);
-                }
-            }
-        }
-    }, 30000);
-}
-
-// ===== УПРАВЛЕНИЕ АВТОРИЗАЦИЕЙ =====
-
-function showAuthModal() {
-    const modal = document.getElementById('auth-modal');
-    if (modal) {
-        modal.classList.add('active');
-        document.body.style.overflow = 'hidden';
-    }
-}
-
-function hideAuthModal() {
-    const modal = document.getElementById('auth-modal');
-    if (modal) {
-        modal.classList.remove('active');
-        document.body.style.overflow = '';
-    }
-}
-
-function useDemoAuth() {
-    console.log("🎭 Использование демо-авторизации");
-    
-    const demoUser = {
-        id: Date.now() % 1000000,
-        first_name: 'Демо',
-        last_name: 'Пользователь',
-        username: `demo_${Date.now()}`
-    };
-    
-    const authData = {
-        user: demoUser,
-        auth_date: Date.now(),
-        valid: true,
-        browser_auth: true,
-        demo_mode: true
-    };
-    
-    handleAuthSuccess(authData);
-    hideAuthModal();
-}
-
-function handleAuthSuccess(authData) {
-    console.log("✅ Обработка успешной авторизации");
-    
-    // Сохраняем данные
-    localStorage.setItem('telegram_auth_data', JSON.stringify(authData));
-    
-    // Обновляем состояние приложения
     appState.user = {
-        id: authData.user.id,
-        firstName: authData.user.first_name || 'Пользователь',
-        lastName: authData.user.last_name || '',
-        username: authData.user.username || `user_${authData.user.id}`
+        id: 1003215844,
+        firstName: 'Тестовый',
+        lastName: 'Пользователь',
+        username: 'test_user'
     };
     
-    appState.authType = authData.demo_mode ? "demo" : "browser";
-    isAuthenticated = true;
-    
-    // Обновляем UI
-    updateUserInfo();
-    updateAuthIndicator();
-    
-    // Скрываем кнопку входа
-    const loginBtn = document.getElementById('login-corner-btn');
-    if (loginBtn) {
-        loginBtn.style.display = 'none';
-    }
-    
-    // Загружаем данные пользователя
-    loadUserData();
-    
-    showToast('Авторизация успешна', `Добро пожаловать, ${appState.user.firstName}!`, 'success');
-}
-
-function logout() {
-    console.log("🚪 Выход из аккаунта");
-    
-    // Очищаем данные
-    localStorage.removeItem('telegram_auth_data');
-    
-    // Сбрасываем состояние
-    appState = {
-        user: null,
-        balance: 1000,
-        inventory: [],
-        dailyBonusAvailable: true,
-        referralCode: "",
-        tradeLink: "",
-        referralsCount: 0,
-        authType: "none"
-    };
-    
-    isAuthenticated = false;
-    
-    // Обновляем UI
-    updateUserInfo();
-    updateAuthIndicator();
-    
-    // Показываем кнопку входа
-    const loginBtn = document.getElementById('login-corner-btn');
-    if (loginBtn) {
-        loginBtn.style.display = 'flex';
-    }
-    
-    // Возвращаем на главную
-    backToMain();
-    
-    showToast('Вы вышли из аккаунта', 'Для доступа ко всем функциям войдите снова', 'info');
-}
-
-// ===== НАВИГАЦИЯ =====
-
-function openSection(sectionName) {
-    console.log(`📱 Открываем раздел: ${sectionName}`);
-    
-    const mainElements = document.querySelectorAll('.main-content > *:not(.page-section)');
-    mainElements.forEach(element => {
-        element.style.display = 'none';
-    });
-    
-    document.querySelectorAll('.page-section').forEach(section => {
-        section.classList.add('hidden');
-        section.style.display = 'none';
-    });
-    
-    const targetSection = document.getElementById(`${sectionName}-section`);
-    if (targetSection) {
-        targetSection.classList.remove('hidden');
-        targetSection.style.display = 'block';
-        
-        window.scrollTo(0, 0);
-        targetSection.scrollTop = 0;
-        
-        if (sectionName === 'inventory') {
-            updateInventoryUI();
-        } else if (sectionName === 'promo') {
-            loadAvailablePromos();
-        } else if (sectionName === 'earn') {
-            loadEarnData();
+    appState.balance = 1500;
+    appState.inventory = [
+        {
+            id: '1',
+            name: 'Наклейка | ENCE |',
+            price: 250,
+            type: 'sticker',
+            rarity: 'common',
+            received_at: Date.now() / 1000
+        },
+        {
+            id: '2',
+            name: 'FAMAS | Колония',
+            price: 500,
+            type: 'weapon',
+            rarity: 'uncommon',
+            received_at: Date.now() / 1000
+        },
+        {
+            id: '3',
+            name: 'Five-SeveN | Хладагент',
+            price: 750,
+            type: 'weapon',
+            rarity: 'rare',
+            received_at: Date.now() / 1000
         }
-    }
+    ];
     
-    toggleMenu(false);
+    appState.dailyBonusAvailable = true;
+    appState.referralCode = `ref_${appState.user.id}_demo`;
+    appState.referralsCount = 3;
+    appState.tradeLink = "https://steamcommunity.com/tradeoffer/new/partner=123456789";
+    
+    updateUserInfo();
+    updateInventoryUI();
+    updateProfileInfo();
+    
+    showToast('Демо-режим', 'Используются тестовые данные', 'info');
 }
 
-function backToMain() {
-    console.log("🔙 Возврат на главную");
-    
-    const mainElements = document.querySelectorAll('.main-content > *:not(.page-section)');
-    mainElements.forEach(element => {
-        element.style.display = 'block';
-    });
-    
-    document.querySelectorAll('.page-section').forEach(section => {
-        section.classList.add('hidden');
-        section.style.display = 'none';
-    });
-    
-    const caseOpening = document.getElementById('case-opening');
-    if (caseOpening) {
-        caseOpening.classList.add('hidden');
-        caseOpening.style.display = 'none';
-    }
-    
-    window.scrollTo(0, 0);
-}
+// ===== УТИЛИТЫ ДЛЯ ПРЕДОТВРАЩЕНИЯ ДВОЙНЫХ КЛИКОВ =====
+let isProcessing = false;
 
-function toggleMenu(show) {
-    const menu = document.getElementById('side-menu');
-    if (menu) {
-        if (typeof show === 'boolean') {
-            if (show) {
-                menu.classList.add('active');
-                document.body.style.overflow = 'hidden';
-            } else {
-                menu.classList.remove('active');
-                document.body.style.overflow = '';
-            }
-        } else {
-            menu.classList.toggle('active');
-            document.body.style.overflow = menu.classList.contains('active') ? 'hidden' : '';
-        }
-    }
+function debounce(func, delay = 300) {
+    if (isProcessing) return;
+    
+    isProcessing = true;
+    func();
+    
+    setTimeout(() => {
+        isProcessing = false;
+    }, delay);
 }
 
 // ===== ОБРАБОТЧИКИ СОБЫТИЙ =====
-
 function setupEventListeners() {
     console.log("🔧 Настройка обработчиков событий...");
-    
-    // Кнопка входа
-    const loginBtn = document.getElementById('login-corner-btn');
-    if (loginBtn) {
-        loginBtn.addEventListener('click', showAuthModal);
-    }
-    
-    // Модальное окно авторизации
-    const authModal = document.getElementById('auth-modal');
-    const closeAuthModal = document.getElementById('close-auth-modal');
-    const demoAuthBtn = document.getElementById('demo-auth-btn');
-    
-    if (closeAuthModal) {
-        closeAuthModal.addEventListener('click', hideAuthModal);
-    }
-    
-    if (demoAuthBtn) {
-        demoAuthBtn.addEventListener('click', useDemoAuth);
-    }
-    
-    // Слушаем сообщения от окна авторизации Telegram
-    window.addEventListener('message', function(event) {
-        if (event.data && event.data.type === 'telegram_auth_success') {
-            console.log('✅ Получены данные Telegram от виджета:', event.data);
-            
-            handleAuthSuccess(event.data.data);
-            hideAuthModal();
-        }
-    });
-    
-    // Кнопка выхода
-    const logoutBtn = document.getElementById('logout-btn');
-    if (logoutBtn) {
-        logoutBtn.addEventListener('click', logout);
-    }
     
     // Кнопка меню
     const menuBtn = document.getElementById('menu-btn');
@@ -780,6 +437,12 @@ function setupEventListeners() {
         });
     });
     
+    // Кнопка выхода
+    const logoutBtn = document.getElementById('logout-btn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', closeApp);
+    }
+    
     // Промокод по Enter
     const promoInput = document.getElementById('promo-code-input');
     if (promoInput) {
@@ -814,8 +477,81 @@ function setupEventListeners() {
     console.log("✅ Обработчики событий установлены");
 }
 
-// ===== API ФУНКЦИИ =====
+// ===== НАВИГАЦИЯ =====
+function openSection(sectionName) {
+    console.log(`📱 Открываем раздел: ${sectionName}`);
+    
+    const mainElements = document.querySelectorAll('.main-content > *:not(.page-section)');
+    mainElements.forEach(element => {
+        element.style.display = 'none';
+    });
+    
+    document.querySelectorAll('.page-section').forEach(section => {
+        section.classList.add('hidden');
+        section.style.display = 'none';
+    });
+    
+    const targetSection = document.getElementById(`${sectionName}-section`);
+    if (targetSection) {
+        targetSection.classList.remove('hidden');
+        targetSection.style.display = 'block';
+        
+        window.scrollTo(0, 0);
+        targetSection.scrollTop = 0;
+        
+        if (sectionName === 'inventory') {
+            updateInventoryUI();
+        } else if (sectionName === 'promo') {
+            loadAvailablePromos();
+        } else if (sectionName === 'earn') {
+            loadEarnData();
+        }
+    }
+    
+    toggleMenu(false);
+}
 
+function backToMain() {
+    console.log("🔙 Возврат на главную");
+    
+    const mainElements = document.querySelectorAll('.main-content > *:not(.page-section)');
+    mainElements.forEach(element => {
+        element.style.display = 'block';
+    });
+    
+    document.querySelectorAll('.page-section').forEach(section => {
+        section.classList.add('hidden');
+        section.style.display = 'none';
+    });
+    
+    const caseOpening = document.getElementById('case-opening');
+    if (caseOpening) {
+        caseOpening.classList.add('hidden');
+        caseOpening.style.display = 'none';
+    }
+    
+    window.scrollTo(0, 0);
+}
+
+function toggleMenu(show) {
+    const menu = document.getElementById('side-menu');
+    if (menu) {
+        if (typeof show === 'boolean') {
+            if (show) {
+                menu.classList.add('active');
+                document.body.style.overflow = 'hidden';
+            } else {
+                menu.classList.remove('active');
+                document.body.style.overflow = '';
+            }
+        } else {
+            menu.classList.toggle('active');
+            document.body.style.overflow = menu.classList.contains('active') ? 'hidden' : '';
+        }
+    }
+}
+
+// ===== API ФУНКЦИИ =====
 async function apiRequest(endpoint, method = 'GET', data = null) {
     try {
         const headers = {
@@ -823,25 +559,15 @@ async function apiRequest(endpoint, method = 'GET', data = null) {
             'Cache-Control': 'no-cache'
         };
         
-        // Добавляем заголовки авторизации
-        const savedAuth = localStorage.getItem('telegram_auth_data');
-        if (savedAuth) {
-            try {
-                const authData = JSON.parse(savedAuth);
-                if (authData.user && authData.user.id) {
-                    headers['X-Telegram-User-ID'] = authData.user.id;
-                    headers['X-Browser-Auth'] = 'true';
-                    console.log('🔐 Используем браузерную авторизацию');
-                }
-            } catch (e) {
-                console.error('Ошибка парсинга сохраненной авторизации:', e);
-            }
-        }
-        
-        // Для Telegram Mini App
-        if (window.Telegram?.WebApp?.initData) {
-            headers['Authorization'] = `tma ${window.Telegram.WebApp.initData}`;
-            console.log('🔐 Используем Telegram Mini App авторизацию');
+        if (tg && tg.initData) {
+            headers['Authorization'] = `tma ${tg.initData}`;
+            console.log('🔐 Добавляем Telegram авторизацию');
+        } else if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
+            console.log('⚠️ Нет initData, используем демо-режим для API');
+            return simulateAPIResponse(endpoint, method, data);
+        } else {
+            console.log('⚠️ Нет данных Telegram, используем демо-режим');
+            return simulateAPIResponse(endpoint, method, data);
         }
         
         const config = {
@@ -855,52 +581,25 @@ async function apiRequest(endpoint, method = 'GET', data = null) {
             config.body = JSON.stringify(data);
         }
         
-        console.log(`🌐 API Request: ${method} ${endpoint}`);
+        console.log(`🌐 API Request: ${method} ${API_BASE_URL}${endpoint}`);
         
         const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
         
         console.log(`📨 API Response: ${response.status} ${endpoint}`);
         
         if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`❌ API Error ${response.status}:`, errorText);
-            
-            // Если ошибка авторизации, предлагаем войти
             if (response.status === 401) {
-                console.warn('🔐 Ошибка авторизации 401');
-                
-                // Для некоторых endpoints используем демо-режим
-                const demoEndpoints = ['/api/health', '/api/available-promos', '/api/test'];
-                if (demoEndpoints.some(ep => endpoint.includes(ep))) {
-                    return simulateAPIResponse(endpoint, method, data);
-                }
-                
-                // Для других предлагаем авторизацию
-                if (!endpoint.includes('/api/health')) {
-                    setTimeout(() => {
-                        if (!isAuthenticated) {
-                            showAuthModal();
-                            showToast('Требуется авторизация', 'Войдите для доступа к этой функции', 'warning');
-                        }
-                    }, 500);
-                }
+                console.warn('🔐 Ошибка авторизации 401, переходим в демо-режим');
+                return simulateAPIResponse(endpoint, method, data);
             }
-            
-            throw new Error(`HTTP ${response.status}: ${errorText}`);
+            throw new Error(`HTTP ${response.status}`);
         }
         
         return await response.json();
         
     } catch (error) {
         console.error(`❌ API Error (${endpoint}):`, error);
-        
-        // Для публичных endpoints возвращаем демо-данные
-        const publicEndpoints = ['/api/health', '/api/available-promos', '/api/test'];
-        if (publicEndpoints.some(ep => endpoint.includes(ep))) {
-            return simulateAPIResponse(endpoint, method, data);
-        }
-        
-        throw error;
+        return simulateAPIResponse(endpoint, method, data);
     }
 }
 
@@ -908,53 +607,39 @@ async function apiRequest(endpoint, method = 'GET', data = null) {
 function simulateAPIResponse(endpoint, method, data) {
     console.log(`🎭 Симуляция API ответа для: ${endpoint}`);
     
-    // Базовые демо-данные
-    const demoUser = {
-        id: appState.user ? appState.user.id : 1003215844,
-        first_name: appState.user ? appState.user.firstName : 'Демо',
-        last_name: appState.user ? appState.user.lastName : 'Пользователь',
-        username: appState.user ? appState.user.username : 'demo_user'
-    };
-    
     switch(endpoint) {
         case '/api/user':
             return Promise.resolve({
                 success: true,
                 user: {
-                    id: 1,
-                    telegram_id: demoUser.id,
-                    username: demoUser.username,
-                    first_name: demoUser.first_name,
-                    last_name: demoUser.last_name,
+                    id: appState.user ? appState.user.id : 1003215844,
+                    first_name: appState.user ? appState.user.firstName : 'Демо',
+                    last_name: appState.user ? appState.user.lastName : 'Пользователь',
+                    username: appState.user ? appState.user.username : 'demo_user',
                     balance: appState.balance,
-                    points: appState.balance,
-                    referral_code: `ref_${demoUser.id}_demo`,
-                    trade_link: appState.tradeLink || "",
-                    created_at: Date.now() / 1000 - 86400,
-                    is_subscribed: true
+                    inventory: appState.inventory,
+                    referral_code: appState.referralCode,
+                    trade_link: appState.tradeLink,
+                    referrals_count: appState.referralsCount
+                },
+                daily_bonus_available: appState.dailyBonusAvailable,
+                telegram_profile_status: {
+                    verified: enhancedEarnState.telegramVerified,
+                    total_earned: enhancedEarnState.telegramVerified ? 500 : 0
+                },
+                steam_profile_status: {
+                    verified: enhancedEarnState.steamVerified,
+                    level: 10,
+                    total_earned: enhancedEarnState.steamVerified ? 1000 : 0
                 },
                 stats: {
-                    total_earned: appState.balance + 500,
-                    referral_earnings: 500,
-                    telegram_earnings: enhancedEarnState.telegramVerified ? 500 : 0,
-                    steam_earnings: enhancedEarnState.steamVerified ? 1000 : 0,
-                    total_cases_opened: 5,
-                    total_spent: 2500,
-                    inventory_count: appState.inventory.length,
-                    inventory_value: appState.inventory.reduce((sum, item) => sum + (item.price || 0), 0)
-                },
-                referral_info: {
-                    referral_code: `ref_${demoUser.id}_demo`,
-                    referral_link: `https://t.me/rancasebot?start=ref_${demoUser.id}_demo`,
-                    total_referrals: 3,
-                    active_referrals: 3
-                },
-                inventory: appState.inventory,
-                daily_bonus_available: appState.dailyBonusAvailable,
-                telegram_profile_verified: enhancedEarnState.telegramVerified,
-                steam_profile_verified: enhancedEarnState.steamVerified,
-                demo_mode: true,
-                auth_type: "demo"
+                    total_earned: appState.balance - 100,
+                    from_referrals: 500,
+                    from_telegram: enhancedEarnState.telegramVerified ? 500 : 0,
+                    from_steam: enhancedEarnState.steamVerified ? 1000 : 0,
+                    total_invites: 3,
+                    active_invites: 3
+                }
             });
             
         case '/api/daily-bonus':
@@ -1052,6 +737,18 @@ function simulateAPIResponse(endpoint, method, data) {
             }
             break;
             
+        case '/api/set-trade-link':
+            if (method === 'POST' && data && data.trade_link) {
+                appState.tradeLink = data.trade_link;
+                return Promise.resolve({
+                    success: true,
+                    message: "Трейд ссылка сохранена",
+                    trade_link: data.trade_link,
+                    validated: true
+                });
+            }
+            break;
+            
         case '/api/available-promos':
             return Promise.resolve({
                 success: true,
@@ -1076,6 +773,27 @@ function simulateAPIResponse(endpoint, method, data) {
                 demo_mode: true
             });
             
+        case '/api/earn/stats':
+            return Promise.resolve({
+                success: true,
+                stats: {
+                    total_earned: 1500,
+                    from_referrals: 500,
+                    from_telegram: enhancedEarnState.telegramVerified ? 500 : 0,
+                    from_steam: enhancedEarnState.steamVerified ? 1000 : 0,
+                    total_invites: 3,
+                    active_invites: 3,
+                    referral_tier: 0,
+                    daily_estimate: (enhancedEarnState.telegramVerified ? 71 : 0) + (enhancedEarnState.steamVerified ? 107 : 0),
+                    weekly_estimate: (enhancedEarnState.telegramVerified ? 500 : 0) + (enhancedEarnState.steamVerified ? 750 : 0),
+                    monthly_estimate: (enhancedEarnState.telegramVerified ? 2143 : 0) + (enhancedEarnState.steamVerified ? 3214 : 0)
+                },
+                next_milestone: { invites: 5, bonus: 1000, badge: "🎖️ Начинающий" },
+                progress_percent: 60,
+                telegram_status: { verified: enhancedEarnState.telegramVerified },
+                steam_status: { verified: enhancedEarnState.steamVerified, level: 10 }
+            });
+            
         case '/api/earn/check-telegram':
             if (method === 'POST') {
                 if (!enhancedEarnState.telegramVerified) {
@@ -1085,21 +803,27 @@ function simulateAPIResponse(endpoint, method, data) {
                     return Promise.resolve({
                         success: true,
                         verified: true,
-                        has_bot_in_lastname: true,
-                        has_bot_in_bio: true,
-                        first_verification: true,
-                        telegram_earnings: 500,
-                        message: "Telegram профиль подтвержден! +500 баллов"
+                        last_name_ok: true,
+                        bio_ok: true,
+                        profile_photo_ok: true,
+                        rewards_available: 500,
+                        reward_received: true,
+                        penalty_applied: false,
+                        next_check: Date.now() + 604800000,
+                        message: "Telegram профиль проверен"
                     });
                 }
                 return Promise.resolve({
                     success: true,
                     verified: true,
-                    has_bot_in_lastname: true,
-                    has_bot_in_bio: true,
-                    first_verification: false,
-                    telegram_earnings: 500,
-                    message: "Telegram профиль проверен"
+                    last_name_ok: true,
+                    bio_ok: true,
+                    profile_photo_ok: true,
+                    rewards_available: 0,
+                    reward_received: false,
+                    penalty_applied: false,
+                    next_check: Date.now() + 604800000,
+                    message: "Telegram профиль уже проверен"
                 });
             }
             break;
@@ -1113,79 +837,90 @@ function simulateAPIResponse(endpoint, method, data) {
                     return Promise.resolve({
                         success: true,
                         verified: true,
-                        steam_id: "76561198000000000",
                         level: 10,
-                        games: 42,
-                        badges: 7,
-                        age_days: 365,
-                        first_verification: true,
-                        steam_earnings: 1000,
-                        message: "Steam профиль подтвержден! +1000 баллов"
+                        has_link: true,
+                        is_public: true,
+                        game_count: 42,
+                        badges_count: 7,
+                        profile_age_days: 365,
+                        rewards_available: 1000,
+                        reward_received: true,
+                        next_reward_date: Date.now() + 604800000,
+                        message: "Steam профиль проверен"
                     });
                 }
                 return Promise.resolve({
                     success: true,
                     verified: true,
-                    steam_id: "76561198000000000",
                     level: 10,
-                    games: 42,
-                    badges: 7,
-                    age_days: 365,
-                    first_verification: false,
-                    steam_earnings: 1000,
-                    message: "Steam профиль проверен"
+                    has_link: true,
+                    is_public: true,
+                    game_count: 42,
+                    badges_count: 7,
+                    profile_age_days: 365,
+                    rewards_available: 0,
+                    reward_received: false,
+                    next_reward_date: Date.now() + 604800000,
+                    message: "Steam профиль уже проверен"
                 });
             }
             break;
             
         case '/api/earn/invite-friend':
-            if (method === 'POST' && data && data.referral_code) {
+            if (method === 'POST') {
                 appState.balance += 500;
                 appState.referralsCount += 1;
                 updateUserInfo();
                 
                 const totalInvites = appState.referralsCount;
                 let milestoneBonus = 0;
+                let newTier = 0;
                 
                 if (totalInvites === 5) {
                     milestoneBonus = 1000;
+                    newTier = 1;
                     appState.balance += milestoneBonus;
                 }
                 
                 return Promise.resolve({
                     success: true,
-                    bonus_awarded: 500,
+                    base_reward: 500,
                     milestone_bonus: milestoneBonus,
-                    to_user_id: 1,
                     new_balance: appState.balance,
-                    referral_info: {
-                        total_referrals: totalInvites,
-                        active_referrals: totalInvites,
-                        referral_code: appState.referralCode,
-                        referral_link: `https://t.me/rancasebot?start=${appState.referralCode}`
-                    },
-                    message: `Вы успешно присоединились по реферальной ссылке! Пригласивший получил 500 баллов`
+                    total_invites: totalInvites,
+                    referral_tier: newTier,
+                    milestone_reached: milestoneBonus > 0,
+                    passive_income_activated: totalInvites >= 10,
+                    passive_income_percent: totalInvites >= 50 ? 15 : totalInvites >= 25 ? 10 : totalInvites >= 10 ? 5 : 0,
+                    message: `Друг приглашен! +500 баллов` + (milestoneBonus > 0 ? ` + бонус ${milestoneBonus} баллов за достижение!` : "")
                 });
             }
             break;
             
         case '/api/earn/referral-info':
             const totalInvites = appState.referralsCount;
-            const referralCode = appState.referralCode || `ref_${appState.user ? appState.user.id : 1003215844}_demo`;
-            
             return Promise.resolve({
                 success: true,
-                referral_code: referralCode,
-                referral_link: `https://t.me/rancasebot?start=${referralCode}`,
-                total_referrals: totalInvites,
-                active_referrals: totalInvites,
-                total_earned: 1500,
+                referral_code: appState.referralCode,
+                referral_link: `https://t.me/rancasebot?start=${appState.referralCode}`,
+                total_invites: totalInvites,
                 referral_tier: 0,
-                milestones: [
+                current_milestone: null,
+                next_milestone: { invites: 5, bonus: 1000, badge: "🎖️ Начинающий" },
+                progress_percent: (totalInvites / 5) * 100,
+                invites_needed: 5 - totalInvites,
+                base_reward: 500,
+                passive_income: {
+                    enabled: totalInvites >= 10,
+                    percent: totalInvites >= 50 ? 15 : totalInvites >= 25 ? 10 : totalInvites >= 10 ? 5 : 0
+                },
+                all_milestones: [
                     { invites: 5, bonus: 1000, badge: "🎖️ Начинающий" },
-                    { invites: 10, bonus: 2500, badge: "🥉 Бронзовый агент" }
-                ],
-                demo_mode: true
+                    { invites: 10, bonus: 2500, badge: "🥉 Бронзовый агент" },
+                    { invites: 25, bonus: 7500, badge: "🥈 Серебряный агент" },
+                    { invites: 50, bonus: 20000, badge: "🥇 Золотой агент" },
+                    { invites: 100, bonus: 50000, badge: "👑 Король рефералов" }
+                ]
             });
     }
     
@@ -1197,132 +932,38 @@ function simulateAPIResponse(endpoint, method, data) {
 }
 
 async function loadUserData() {
-    if (!isAuthenticated) {
-        console.log("⚠️ Пользователь не авторизован, используем демо-данные");
-        useDemoData();
-        return;
-    }
-    
     try {
         console.log("🔄 Загрузка данных пользователя...");
+        
         const response = await apiRequest('/api/user');
         
-        if (response.success) {
-            // Обновляем состояние приложения
-            appState.balance = response.user.points || response.user.balance || 1000;
-            appState.inventory = response.inventory || [];
-            appState.dailyBonusAvailable = response.daily_bonus_available || true;
-            appState.referralCode = response.user.referral_code || `ref_${response.user.telegram_id}`;
-            appState.tradeLink = response.user.trade_link || "";
+        if (response.success && !response.demo_mode) {
+            appState.balance = response.user.balance;
+            appState.inventory = response.user.inventory || [];
+            appState.dailyBonusAvailable = response.daily_bonus_available;
+            appState.referralCode = response.user.referral_code;
+            appState.tradeLink = response.user.trade_link;
+            appState.referralsCount = response.user.referrals_count;
             
-            if (response.stats) {
-                appState.referralsCount = response.stats.referrals_count || response.referral_info?.total_referrals || 0;
+            if (response.telegram_profile_status) {
+                enhancedEarnState.telegramVerified = response.telegram_profile_status.verified;
+            }
+            if (response.steam_profile_status) {
+                enhancedEarnState.steamVerified = response.steam_profile_status.verified;
             }
             
-            if (response.telegram_profile_verified !== undefined) {
-                enhancedEarnState.telegramVerified = response.telegram_profile_verified;
-            }
-            if (response.steam_profile_verified !== undefined) {
-                enhancedEarnState.steamVerified = response.steam_profile_verified;
-            }
-            
-            // Обновляем UI
             updateUserInfo();
             updateInventoryUI();
             updateProfileInfo();
             
-            // Обновляем реферальную информацию
-            if (response.referral_info) {
-                enhancedEarnState.referralLink = response.referral_info.referral_link;
-                const linkText = document.getElementById('referral-link-text');
-                if (linkText) {
-                    linkText.textContent = response.referral_info.referral_link;
-                }
-            }
-            
             showToast('Добро пожаловать!', `Баланс: ${appState.balance} баллов`, 'success');
-            
-            // Проверяем доступность реферального кода
-            setTimeout(() => {
-                checkReferralCodeAvailability();
-            }, 1000);
-            
         } else if (response.demo_mode) {
             console.log('🎭 Используем демо-данные');
-            useDemoData();
         }
         
     } catch (error) {
         console.error('❌ Ошибка загрузки данных:', error);
-        useDemoData();
     }
-}
-
-function useDemoData() {
-    console.log("🔧 Используем демо-данные");
-    
-    const demoId = appState.user ? appState.user.id : 1003215844;
-    
-    appState.user = {
-        id: demoId,
-        firstName: 'Демо',
-        lastName: 'Пользователь',
-        username: 'demo_user'
-    };
-    
-    appState.balance = 1500;
-    appState.inventory = [
-        {
-            id: '1',
-            name: 'Наклейка | ENCE |',
-            price: 250,
-            type: 'sticker',
-            rarity: 'common',
-            received_at: Date.now() / 1000
-        },
-        {
-            id: '2',
-            name: 'FAMAS | Колония',
-            price: 500,
-            type: 'weapon',
-            rarity: 'uncommon',
-            received_at: Date.now() / 1000
-        },
-        {
-            id: '3',
-            name: 'Five-SeveN | Хладагент',
-            price: 750,
-            type: 'weapon',
-            rarity: 'rare',
-            received_at: Date.now() / 1000
-        }
-    ];
-    
-    appState.dailyBonusAvailable = true;
-    appState.referralCode = `ref_${demoId}_demo`;
-    appState.referralsCount = 3;
-    appState.tradeLink = "https://steamcommunity.com/tradeoffer/new/partner=123456789";
-    appState.authType = "demo";
-    isAuthenticated = true;
-    
-    updateUserInfo();
-    updateInventoryUI();
-    updateProfileInfo();
-    updateAuthIndicator();
-    
-    enhancedEarnState.referralLink = `https://t.me/rancasebot?start=ref_${demoId}_demo`;
-    const linkText = document.getElementById('referral-link-text');
-    if (linkText) {
-        linkText.textContent = enhancedEarnState.referralLink;
-    }
-    
-    // Скрываем кнопку входа
-    const loginBtn = document.getElementById('login-corner-btn');
-    if (loginBtn) {
-        loginBtn.style.display = 'none';
-    }
-    
-    showToast('Демо-режим', 'Используются демо-данные. Войдите для полного доступа.', 'info');
 }
 
 async function testAPIConnection() {
@@ -1342,8 +983,6 @@ async function testAPIConnection() {
         return false;
     }
 }
-
-// ===== ОСНОВНЫЕ ФУНКЦИИ ПРИЛОЖЕНИЯ =====
 
 async function openCase(price) {
     try {
@@ -1493,41 +1132,23 @@ async function loadAvailablePromos() {
 }
 
 // ===== УЛУЧШЕННАЯ СИСТЕМА ЗАРАБОТКА =====
-
 async function loadEarnData() {
     try {
-        const response = await apiRequest('/api/earn/referral-info');
+        const response = await apiRequest('/api/earn/stats');
         
         if (response.success) {
-            const stats = response.stats || {
-                total_earned: 1500,
-                referral_earnings: 500,
-                telegram_earnings: enhancedEarnState.telegramVerified ? 500 : 0,
-                steam_earnings: enhancedEarnState.steamVerified ? 1000 : 0
-            };
+            const stats = response.stats;
             
             const totalEarned = document.getElementById('total-earned');
             const totalInvites = document.getElementById('total-invites');
             const telegramEarned = document.getElementById('telegram-earned');
             const steamEarned = document.getElementById('steam-earned');
             
-            if (totalEarned) totalEarned.textContent = stats.total_earned || 0;
-            if (totalInvites) totalInvites.textContent = response.total_referrals || 0;
-            if (telegramEarned) telegramEarned.textContent = stats.telegram_earnings || 0;
-            if (steamEarned) steamEarned.textContent = stats.steam_earnings || 0;
+            if (totalEarned) totalEarned.textContent = stats.total_earned;
+            if (totalInvites) totalInvites.textContent = stats.total_invites;
+            if (telegramEarned) telegramEarned.textContent = stats.from_telegram;
+            if (steamEarned) steamEarned.textContent = stats.from_steam;
             
-            // Обновляем реферальную ссылку
-            enhancedEarnState.referralLink = response.referral_link;
-            const linkText = document.getElementById('referral-link-text');
-            if (linkText) {
-                linkText.textContent = response.referral_link;
-            }
-            
-            // Обновляем реферальный код в профиле
-            appState.referralCode = response.referral_code;
-            updateProfileInfo();
-            
-            // Обновляем прогресс
             if (response.progress_percent !== undefined) {
                 const progressBar = document.getElementById('referral-progress-bar');
                 const currentInvites = document.getElementById('current-invites');
@@ -1536,7 +1157,7 @@ async function loadEarnData() {
                 const nextMilestoneReward = document.getElementById('next-milestone-reward');
                 
                 if (progressBar) progressBar.style.width = `${response.progress_percent}%`;
-                if (currentInvites) currentInvites.textContent = response.total_referrals || 0;
+                if (currentInvites) currentInvites.textContent = stats.total_invites;
                 
                 if (response.next_milestone) {
                     if (nextMilestone) nextMilestone.textContent = ` / ${response.next_milestone.invites}`;
@@ -1551,24 +1172,62 @@ async function loadEarnData() {
             }
             
             enhancedEarnState.nextMilestone = response.next_milestone;
-            enhancedEarnState.progressPercent = response.progress_percent || 0;
+            enhancedEarnState.progressPercent = response.progress_percent;
+            enhancedEarnState.telegramVerified = (response.telegram_status && response.telegram_status.verified) || false;
+            enhancedEarnState.steamVerified = (response.steam_status && response.steam_status.verified) || false;
+            enhancedEarnState.passiveIncomePercent = stats.passive_income_percent || 0;
             
-            // Обновляем статусы профилей
-            updateProfileStatuses();
+            updateProfileStatuses(response.telegram_status, response.steam_status);
         }
+        
+        await loadReferralInfo();
         
     } catch (error) {
         console.error('Ошибка загрузки данных заработка:', error);
     }
 }
 
-function updateProfileStatuses() {
+async function loadReferralInfo() {
+    try {
+        const response = await apiRequest('/api/earn/referral-info');
+        
+        if (response.success) {
+            enhancedEarnState.referralLink = response.referral_link;
+            
+            const linkText = document.getElementById('referral-link-text');
+            if (linkText) {
+                linkText.textContent = response.referral_link;
+            }
+            
+            const currentPassivePercent = document.getElementById('current-passive-percent');
+            const passiveIncomeStatus = document.getElementById('passive-income-status');
+            const passiveIncomeCard = document.getElementById('passive-income-card');
+            
+            if (response.passive_income && response.passive_income.percent !== undefined) {
+                if (currentPassivePercent) currentPassivePercent.textContent = `${response.passive_income.percent}%`;
+                
+                if (response.passive_income.enabled) {
+                    if (passiveIncomeStatus) {
+                        passiveIncomeStatus.textContent = 'Активен';
+                        passiveIncomeStatus.className = 'badge success';
+                    }
+                    if (passiveIncomeCard) passiveIncomeCard.classList.add('pulse');
+                }
+            }
+        }
+        
+    } catch (error) {
+        console.error('Ошибка загрузки реферальной информации:', error);
+    }
+}
+
+function updateProfileStatuses(telegramStatus, steamStatus) {
     const telegramStatusBadge = document.getElementById('telegram-status-badge');
     const telegramLastnameCheck = document.getElementById('telegram-lastname-check');
     const telegramBioCheck = document.getElementById('telegram-bio-check');
     const checkTelegramBtn = document.getElementById('check-telegram-btn');
     
-    if (enhancedEarnState.telegramVerified) {
+    if (telegramStatus && telegramStatus.verified) {
         if (telegramStatusBadge) telegramStatusBadge.innerHTML = '<span class="badge success">Проверено</span>';
         if (telegramLastnameCheck) telegramLastnameCheck.className = 'fas fa-check-circle success';
         if (telegramBioCheck) telegramBioCheck.className = 'fas fa-check-circle success';
@@ -1582,10 +1241,17 @@ function updateProfileStatuses() {
     
     const steamStatusBadge = document.getElementById('steam-status-badge');
     const checkSteamBtn = document.getElementById('check-steam-btn');
+    const steamLevel = document.getElementById('steam-level');
+    const steamGames = document.getElementById('steam-games');
+    const steamBadges = document.getElementById('steam-badges');
     
-    if (enhancedEarnState.steamVerified) {
+    if (steamStatus && steamStatus.verified) {
         if (steamStatusBadge) steamStatusBadge.innerHTML = '<span class="badge success">Проверено</span>';
         if (checkSteamBtn) checkSteamBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Перепроверить';
+        
+        if (steamLevel) steamLevel.textContent = steamStatus.level || '-';
+        if (steamGames) steamGames.textContent = steamStatus.game_count || '-';
+        if (steamBadges) steamBadges.textContent = steamStatus.badges_count || '-';
     } else {
         if (steamStatusBadge) steamStatusBadge.innerHTML = '<span class="badge pending">Не проверено</span>';
         if (checkSteamBtn) checkSteamBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Проверить';
@@ -1600,14 +1266,17 @@ async function checkTelegramProfile() {
         });
         
         if (response.success) {
-            if (response.first_verification) {
-                showRewardNotification('Telegram профиль проверен!', response.telegram_earnings);
-                appState.balance += response.telegram_earnings;
+            if (response.reward_received) {
+                showRewardNotification('Telegram профиль проверен!', response.rewards_available);
+                appState.balance += response.rewards_available;
                 updateUserInfo();
             }
             
             enhancedEarnState.telegramVerified = response.verified;
-            updateProfileStatuses();
+            updateProfileStatuses(
+                { verified: response.verified },
+                { verified: enhancedEarnState.steamVerified }
+            );
             
             showToast(
                 response.verified ? 'Успех!' : 'Требуется проверка',
@@ -1639,9 +1308,9 @@ async function checkSteamProfile() {
         });
         
         if (response.success) {
-            if (response.first_verification) {
-                showRewardNotification('Steam профиль проверен!', response.steam_earnings);
-                appState.balance += response.steam_earnings;
+            if (response.reward_received) {
+                showRewardNotification('Steam профиль проверен!', response.rewards_available);
+                appState.balance += response.rewards_available;
                 updateUserInfo();
             }
             
@@ -1650,11 +1319,19 @@ async function checkSteamProfile() {
             const steamBadges = document.getElementById('steam-badges');
             
             if (steamLevel) steamLevel.textContent = response.level;
-            if (steamGames) steamGames.textContent = response.games;
-            if (steamBadges) steamBadges.textContent = response.badges;
+            if (steamGames) steamGames.textContent = response.game_count;
+            if (steamBadges) steamBadges.textContent = response.badges_count;
             
             enhancedEarnState.steamVerified = response.verified;
-            updateProfileStatuses();
+            updateProfileStatuses(
+                { verified: enhancedEarnState.telegramVerified },
+                { 
+                    verified: response.verified,
+                    level: response.level,
+                    game_count: response.game_count,
+                    badges_count: response.badges_count
+                }
+            );
             
             showToast(
                 response.verified ? 'Успех!' : 'Требуется проверка',
@@ -1671,11 +1348,50 @@ async function checkSteamProfile() {
     }
 }
 
-function copyEnhancedReferralLink() {
-    if (!enhancedEarnState.referralLink && appState.referralCode) {
-        enhancedEarnState.referralLink = `https://t.me/rancasebot?start=${appState.referralCode}`;
+async function inviteFriend() {
+    try {
+        const response = await apiRequest('/api/earn/invite-friend', 'POST', {
+            friend_username: "demo_friend"
+        });
+        
+        if (response.success) {
+            showRewardNotification('Друг приглашен!', response.base_reward);
+            
+            if (response.milestone_bonus > 0) {
+                setTimeout(() => {
+                    showRewardNotification('Достижение!', response.milestone_bonus);
+                }, 1500);
+            }
+            
+            appState.balance = response.new_balance;
+            updateUserInfo();
+            
+            if (response.passive_income_activated) {
+                enhancedEarnState.passiveIncomePercent = response.passive_income_percent;
+                const currentPassivePercent = document.getElementById('current-passive-percent');
+                const passiveIncomeStatus = document.getElementById('passive-income-status');
+                const passiveIncomeCard = document.getElementById('passive-income-card');
+                
+                if (currentPassivePercent) currentPassivePercent.textContent = `${response.passive_income_percent}%`;
+                if (passiveIncomeStatus) {
+                    passiveIncomeStatus.textContent = 'Активен';
+                    passiveIncomeStatus.className = 'badge success';
+                }
+                if (passiveIncomeCard) passiveIncomeCard.classList.add('pulse');
+            }
+            
+            await loadEarnData();
+            
+            showToast('Успех!', response.message, 'success');
+        }
+        
+    } catch (error) {
+        console.error('Ошибка приглашения друга:', error);
+        showToast('Ошибка', 'Не удалось пригласить друга', 'error');
     }
-    
+}
+
+function copyEnhancedReferralLink() {
     if (!enhancedEarnState.referralLink) {
         showToast('Ошибка', 'Ссылка не загружена', 'error');
         return;
@@ -1720,7 +1436,6 @@ function showRewardNotification(title, amount) {
 }
 
 // ===== ФУНКЦИИ ДЛЯ РЕФЕРАЛЬНОГО КОДА С ТАЙМЕРОМ =====
-
 async function checkReferralCodeAvailability() {
     try {
         const response = await apiRequest('/api/can-use-referral');
@@ -1862,14 +1577,12 @@ async function useFriendReferralCode() {
         
         if (response.success) {
             appState.balance = response.new_balance;
-            appState.referralsCount = response.referral_info.total_referrals;
             updateUserInfo();
-            updateProfileInfo();
             
             closeInviteModal();
             if (input) input.value = '';
             
-            showToast('Код активирован!', `+${response.bonus_awarded} баллов`, 'success');
+            showToast('Код активирован!', `+${response.base_reward} баллов`, 'success');
             
             // Сразу обновляем состояние кнопки
             await checkReferralCodeAvailability();
@@ -1900,8 +1613,7 @@ function closeInviteModal() {
 }
 
 function shareViaTelegram() {
-    const referralLink = enhancedEarnState.referralLink || 
-                        (appState.referralCode ? `https://t.me/rancasebot?start=${appState.referralCode}` : '');
+    const referralLink = enhancedEarnState.referralLink || `https://t.me/rancasebot?start=${appState.referralCode}`;
     
     if (!referralLink) {
         showToast('Ошибка', 'Реферальная ссылка не найдена', 'error');
@@ -1943,7 +1655,6 @@ function initEnhancedEarning() {
     const checkSteamBtn = document.getElementById('check-steam-btn');
     const copyReferralLinkBtn = document.getElementById('copy-referral-link-btn');
     const shareTelegramBtn = document.getElementById('share-telegram-btn');
-    const referralCodeBtn = document.getElementById('referral-code-btn');
     
     if (checkTelegramBtn) {
         checkTelegramBtn.addEventListener('click', function() { 
@@ -1966,12 +1677,6 @@ function initEnhancedEarning() {
     if (shareTelegramBtn) {
         shareTelegramBtn.addEventListener('click', function() { 
             debounce(shareViaTelegram); 
-        });
-    }
-    
-    if (referralCodeBtn) {
-        referralCodeBtn.addEventListener('click', function() { 
-            debounce(showReferralCodeForm); 
         });
     }
     
@@ -2001,7 +1706,6 @@ function initEnhancedEarning() {
 }
 
 // ===== UI ФУНКЦИИ =====
-
 function updateUserInfo() {
     if (appState.user) {
         const userNameElement = document.getElementById('user-name');
@@ -2051,7 +1755,7 @@ function updateInventoryUI() {
     
     let totalPrice = 0;
     
-    appState.inventory.forEach((item) => {
+    appState.inventory.forEach((item, index) => {
         totalPrice += item.price || 0;
         
         const itemElement = document.createElement('div');
@@ -2106,7 +1810,7 @@ function updateProfileInfo() {
     
     if (profileName) profileName.textContent = `${appState.user.firstName} ${appState.user.lastName}`;
     if (profileId) profileId.textContent = appState.user.id;
-    if (profileRefCode) profileRefCode.textContent = appState.referralCode || 'Загрузка...';
+    if (profileRefCode) profileRefCode.textContent = appState.referralCode;
     if (profileRefCount) profileRefCount.textContent = appState.referralsCount;
     if (tradeLinkInput) tradeLinkInput.value = appState.tradeLink || '';
 }
@@ -2175,7 +1879,6 @@ function updateBonusTimer() {
 }
 
 // ===== АНИМАЦИИ =====
-
 function showCaseOpening() {
     const caseOpening = document.getElementById('case-opening');
     const openingText = document.getElementById('opening-text');
@@ -2223,15 +1926,38 @@ function closeCaseOpening() {
 }
 
 // ===== УТИЛИТЫ =====
+function showToast(title, message, type = 'info') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.innerHTML = `
+        <div class="toast-icon">
+            <i class="fas fa-${type === 'success' ? 'check-circle' : 
+                              type === 'error' ? 'exclamation-circle' : 
+                              type === 'warning' ? 'exclamation-triangle' : 'info-circle'}"></i>
+        </div>
+        <div class="toast-content">
+            <div class="toast-title">${title}</div>
+            <div class="toast-message">${message}</div>
+        </div>
+    `;
+    
+    container.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.classList.add('hiding');
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+            }
+        }, 300);
+    }, 5000);
+}
 
 function copyReferralLink() {
-    const link = enhancedEarnState.referralLink || 
-                (appState.referralCode ? `https://t.me/rancasebot?start=${appState.referralCode}` : '');
-    
-    if (!link) {
-        showToast('Ошибка', 'Реферальная ссылка не найдена', 'error');
-        return;
-    }
+    const link = `https://t.me/rancasebot?start=${appState.referralCode}`;
     
     if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(link)
@@ -2278,45 +2004,7 @@ function closeApp() {
     }
 }
 
-// ===== ИНИЦИАЛИЗАЦИЯ =====
-
-document.addEventListener('DOMContentLoaded', function() {
-    console.log("🚀 CS2 Skin Bot запускается...");
-    
-    // Проверка обновлений
-    checkForUpdates();
-    
-    // Инициализация приложения
-    initializeApp();
-    
-    // Настройка обработчиков событий
-    setupEventListeners();
-    
-    // Обновление таймера бонуса
-    updateBonusTimer();
-    setInterval(updateBonusTimer, 1000);
-    
-    // Инициализируем улучшенный заработок
-    setTimeout(() => {
-        initEnhancedEarning();
-        loadEarnData();
-    }, 500);
-    
-    // Тестируем API соединение
-    setTimeout(testAPIConnection, 1000);
-    
-    // Регистрация Service Worker для PWA
-    registerServiceWorker();
-    
-    // Запуск периодической проверки обновлений
-    startUpdateChecker();
-    
-    // Проверяем авторизацию
-    checkAuthStatus();
-});
-
 // ===== ГЛОБАЛЬНЫЕ ФУНКЦИИ ДЛЯ HTML =====
-
 window.openSection = openSection;
 window.backToMain = backToMain;
 window.claimDailyBonus = claimDailyBonus;
@@ -2331,80 +2019,11 @@ window.closeApp = closeApp;
 window.filterInventory = filterInventory;
 window.checkTelegramProfile = checkTelegramProfile;
 window.checkSteamProfile = checkSteamProfile;
+window.inviteFriend = inviteFriend;
 window.copyEnhancedReferralLink = copyEnhancedReferralLink;
 window.showReferralCodeForm = showReferralCodeForm;
 window.closeInviteModal = closeInviteModal;
 window.useFriendReferralCode = useFriendReferralCode;
 window.shareViaTelegram = shareViaTelegram;
-window.debugTelegramData = debugTelegramData;
-window.showAuthModal = showAuthModal;
-window.hideAuthModal = hideAuthModal;
-window.logout = logout;
 
-console.log("📦 CS2 Skin Bot скрипт загружен v2.1.0!");
-
-// === DEBUG UTILITIES ===
-if (typeof window !== 'undefined') {
-    window.debugTelegram = function() {
-        if (!window.Telegram || !window.Telegram.WebApp) {
-            console.error("❌ Telegram SDK не загружен");
-            return null;
-        }
-        
-        const tg = window.Telegram.WebApp;
-        const debugInfo = {
-            platform: tg.platform,
-            version: tg.version,
-            hasInitData: !!tg.initData,
-            initDataLength: tg.initData?.length || 0,
-            user: tg.initDataUnsafe?.user,
-            authDate: tg.initDataUnsafe?.auth_date,
-            themeParams: tg.themeParams
-        };
-        
-        console.table(debugInfo);
-        return debugInfo;
-    };
-    
-    window.testAuth = function() {
-        console.log("🧪 Testing authentication...");
-        console.log("isAuthenticated:", isAuthenticated);
-        console.log("appState.authType:", appState.authType);
-        console.log("appState.user:", appState.user);
-        console.log("localStorage telegram_auth_data:", localStorage.getItem('telegram_auth_data'));
-        
-        if (window.Telegram?.WebApp) {
-            const tg = window.Telegram.WebApp;
-            console.log("Telegram WebApp initData:", tg.initData ? "Present" : "Missing");
-            console.log("Telegram WebApp user:", tg.initDataUnsafe?.user);
-        }
-    };
-    
-    window.testAPI = async function() {
-        console.log("🧪 Testing API...");
-        
-        try {
-            // Test without auth
-            const health = await fetch('/api/health');
-            console.log("✅ /api/health:", await health.json());
-            
-            // Test with Telegram auth
-            if (window.Telegram?.WebApp?.initData) {
-                const user = await fetch('/api/user', {
-                    headers: { 'Authorization': `tma ${window.Telegram.WebApp.initData}` }
-                });
-                console.log("✅ /api/user status:", user.status);
-                if (user.ok) {
-                    console.log("✅ /api/user data:", await user.json());
-                }
-            }
-        } catch (error) {
-            console.error("❌ API test failed:", error);
-        }
-    };
-    
-    console.log("🔧 Debug commands available:");
-    console.log("  - debugTelegram() - Show Telegram data");
-    console.log("  - testAuth() - Test authentication status");
-    console.log("  - testAPI() - Test API endpoints");
-}
+console.log("📦 CS2 Skin Bot скрипт загружен!");
