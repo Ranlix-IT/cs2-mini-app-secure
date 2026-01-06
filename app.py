@@ -1,7 +1,7 @@
-# app.py - CS2 Bot API Server с базой данных
-from fastapi import FastAPI, HTTPException, Depends, Header, Request, BackgroundTasks
+# app.py - CS2 Bot API Server с базой данных и OAuth авторизацией
+from fastapi import FastAPI, HTTPException, Depends, Header, Request, BackgroundTasks, Response, Cookie
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, Response
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 import json
 import logging
@@ -15,6 +15,9 @@ from pathlib import Path
 from pydantic import BaseModel
 import random
 from datetime import datetime, timedelta
+import secrets
+import jwt
+import datetime as dt
 
 # Импортируем базу данных
 from database import db
@@ -28,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="CS2 Bot API",
-    version="2.0.1",  # Обновленная версия
+    version="2.0.2",  # Обновленная версия с OAuth
     docs_url="/docs",
     redoc_url="/redoc"
 )
@@ -37,8 +40,13 @@ app = FastAPI(
 TOKEN = "7836761722:AAGzXQjiYuX_MOM9ZpMvrVtBx3175giOprQ"
 ADMIN_IDS = [1003215844]
 REQUIRED_CHANNEL = "@ranworkcs"
+SECRET_KEY = "your-secret-key-here-change-in-production"  # В продакшене используйте переменные окружения
+API_BASE_URL = "https://cs2-mini-app.onrender.com"
 
 BASE_DIR = Path(__file__).resolve().parent
+
+# Хранилище для временных OAuth state
+temp_auth_storage = {}
 
 # Настройка CORS для Telegram Mini Apps
 app.add_middleware(
@@ -80,7 +88,7 @@ class UpdateRequest(BaseModel):
 
 # ===== ОБРАБОТЧИКИ СТАТИЧЕСКИХ ФАЙЛОВ С АНТИКЕШИРОВАНИЕМ =====
 @app.get("/")
-async def serve_root():
+async def serve_root(request: Request):
     """Главная HTML страница"""
     try:
         index_path = BASE_DIR / "index.html"
@@ -110,7 +118,7 @@ async def serve_root():
                 <html>
                 <head><title>CS2 Bot API</title></head>
                 <body>
-                    <h1>CS2 Bot API v2.0.1</h1>
+                    <h1>CS2 Bot API v2.0.2</h1>
                     <p>API сервер работает нормально</p>
                     <p><a href="/docs">Документация API</a></p>
                 </body>
@@ -160,14 +168,147 @@ async def serve_service_worker():
         return response
     raise HTTPException(status_code=404, detail="Service Worker не найден")
 
+# ===== OAuth АВТОРИЗАЦИЯ =====
+@app.get("/api/auth/telegram")
+async def telegram_auth_redirect():
+    """Перенаправление на OAuth Telegram"""
+    # Генерируем случайный state для защиты от CSRF
+    state = secrets.token_urlsafe(32)
+    
+    # Сохраняем state во временное хранилище
+    temp_auth_storage[state] = {
+        "timestamp": time.time(),
+        "used": False
+    }
+    
+    # URL OAuth Telegram
+    telegram_auth_url = f"https://oauth.telegram.org/auth?bot_id=7836761722&origin={API_BASE_URL}&request_access=write&state={state}"
+    
+    return RedirectResponse(url=telegram_auth_url)
+
+@app.get("/api/auth/telegram-callback")
+async def telegram_auth_callback(
+    request: Request,
+    id: Optional[str] = None,
+    first_name: Optional[str] = None,
+    last_name: Optional[str] = None,
+    username: Optional[str] = None,
+    photo_url: Optional[str] = None,
+    auth_date: Optional[str] = None,
+    hash: Optional[str] = None,
+    state: Optional[str] = None
+):
+    """Обработка callback от Telegram OAuth"""
+    try:
+        logger.info(f"Telegram OAuth callback: id={id}, username={username}")
+        
+        # Проверяем state
+        if not state or state not in temp_auth_storage:
+            raise HTTPException(status_code=400, detail="Invalid state parameter")
+        
+        # Проверяем, что state не использовался
+        if temp_auth_storage[state].get("used", False):
+            raise HTTPException(status_code=400, detail="State already used")
+        
+        # Отмечаем state как использованный
+        temp_auth_storage[state]["used"] = True
+        
+        # Проверяем обязательные параметры
+        if not id or not auth_date or not hash:
+            raise HTTPException(status_code=400, detail="Missing required parameters")
+        
+        # Проверка подписи
+        check_string = f'auth_date={auth_date}\nfirst_name={first_name or ""}\nid={id}\nlast_name={last_name or ""}\nphoto_url={photo_url or ""}\nusername={username or ""}'
+        
+        secret_key = hashlib.sha256(TOKEN.encode()).digest()
+        hmac_hash = hmac.new(secret_key, check_string.encode(), hashlib.sha256).hexdigest()
+        
+        if hmac_hash != hash:
+            logger.warning(f"Invalid hash: expected {hmac_hash}, got {hash}")
+            raise HTTPException(status_code=400, detail="Invalid hash")
+        
+        # Создаем или получаем пользователя
+        user_id = int(id)
+        
+        # Получаем или создаем пользователя в базе данных
+        user = db.get_or_create_user(
+            telegram_id=user_id,
+            username=username,
+            first_name=first_name,
+            last_name=last_name
+        )
+        
+        if not user:
+            raise HTTPException(status_code=500, detail="Failed to create user")
+        
+        # Создаем JWT токен
+        token_payload = {
+            "sub": str(user_id),
+            "user_id": user['id'],
+            "telegram_id": user_id,
+            "username": username,
+            "first_name": first_name,
+            "last_name": last_name,
+            "exp": dt.datetime.utcnow() + dt.timedelta(days=30)
+        }
+        
+        token = jwt.encode(token_payload, SECRET_KEY, algorithm="HS256")
+        
+        # Создаем response с редиректом и установкой cookie
+        response = RedirectResponse(url="/")
+        
+        # Устанавливаем HTTP-only cookie
+        response.set_cookie(
+            key="auth_token",
+            value=token,
+            httponly=True,
+            max_age=30*24*3600,  # 30 дней
+            samesite="lax",
+            secure=True,  # Только для HTTPS
+            path="/"
+        )
+        
+        # Также устанавливаем cookie для клиентского доступа (без sensitive данных)
+        user_data_cookie = {
+            "id": user_id,
+            "username": username,
+            "first_name": first_name,
+            "last_name": last_name
+        }
+        
+        response.set_cookie(
+            key="user_data",
+            value=json.dumps(user_data_cookie),
+            max_age=30*24*3600,
+            samesite="lax",
+            secure=True,
+            path="/"
+        )
+        
+        logger.info(f"User authenticated via OAuth: {user_id} ({username})")
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"OAuth callback error: {e}")
+        raise HTTPException(status_code=500, detail="Authentication failed")
+
+@app.get("/api/auth/logout")
+async def logout(response: Response):
+    """Выход из системы"""
+    response.delete_cookie(key="auth_token")
+    response.delete_cookie(key="user_data")
+    return {"success": True, "message": "Logged out"}
+
 # ===== API ДЛЯ ОБНОВЛЕНИЙ =====
 @app.get("/api/version")
 async def get_version():
     """Возвращает версию приложения"""
     return {
-        "version": "2.0.1",
+        "version": "2.0.2",
         "build_date": datetime.now().isoformat(),
-        "features": ["auto_update", "cache_control", "enhanced_earn"],
+        "features": ["auto_update", "cache_control", "enhanced_earn", "oauth_auth"],
         "requires_refresh": False,
         "telegram_bot": "@rancasebot"
     }
@@ -180,7 +321,7 @@ async def clear_cache(request: UpdateRequest):
         "message": "Кеш будет очищен при следующей загрузке",
         "timestamp": time.time(),
         "force_refresh": request.force,
-        "next_version": "2.0.1"
+        "next_version": "2.0.2"
     }
 
 @app.get("/api/check-update")
@@ -188,10 +329,10 @@ async def check_update():
     """Проверка обновлений"""
     return {
         "update_available": False,
-        "current_version": "2.0.1",
-        "latest_version": "2.0.1",
-        "changelog": "Автоматическое обновление кеша",
-        "priority": "low"
+        "current_version": "2.0.2",
+        "latest_version": "2.0.2",
+        "changelog": "Добавлена OAuth авторизация через Telegram Widget",
+        "priority": "medium"
     }
 
 # Валидация данных из Telegram
@@ -266,30 +407,41 @@ async def verify_telegram_auth(
     request: Request,
     authorization: str = Header(None, alias="Authorization")
 ) -> Dict[str, Any]:
-    """Проверяет аутентификацию через Telegram"""
+    """Проверяет аутентификацию через Telegram (Mini App, OAuth cookie)"""
     try:
-        logger.info(f"Запрос на аутентификацию: {request.url.path}")
-        
-        # Разрешаем тестирование без авторизации для всех API endpoints
-        DEBUG_MODE = os.environ.get('DEBUG_MODE', 'True') == 'True'
-        
-        if DEBUG_MODE:
-            if not authorization or not authorization.startswith("tma "):
-                logger.info("🔧 Демо-режим: использование тестовых данных")
+        # 1. Проверяем JWT токен из cookie (веб-авторизация)
+        auth_token = request.cookies.get("auth_token")
+        if auth_token:
+            try:
+                decoded = jwt.decode(auth_token, SECRET_KEY, algorithms=["HS256"])
+                
+                logger.info(f"JWT auth valid for user: {decoded.get('telegram_id')}")
+                
                 return {
                     'user': {
-                        'id': 1003215844,
-                        'first_name': 'Тестовый',
-                        'username': 'test_user',
-                        'last_name': 'Пользователь'
+                        'id': decoded.get('telegram_id'),
+                        'first_name': decoded.get('first_name'),
+                        'last_name': decoded.get('last_name'),
+                        'username': decoded.get('username')
                     },
+                    'user_id': decoded.get('user_id'),
                     'valid': True,
-                    'demo_mode': True
+                    'auth_method': 'cookie'
                 }
+            except jwt.ExpiredSignatureError:
+                logger.warning("JWT token expired")
+            except jwt.InvalidTokenError as e:
+                logger.error(f"Invalid JWT token: {e}")
+            except Exception as e:
+                logger.error(f"JWT decode error: {e}")
         
+        logger.info(f"Запрос на аутентификацию: {request.url.path}")
+        
+        # 2. Проверяем Telegram Mini App авторизацию
         if not authorization:
             logger.warning("Отсутствует заголовок Authorization")
-            if request.url.path in ["/api/health", "/api/available-promos", "/api/test", "/", "/script.js", "/style.css", "/manifest.json", "/service-worker.js", "/api/version", "/api/check-update", "/api/can-use-referral"]:
+            if request.url.path in ["/api/health", "/api/available-promos", "/api/test", "/", "/script.js", "/style.css", "/manifest.json", "/service-worker.js", "/api/version", "/api/check-update", "/api/can-use-referral", "/api/auth/logout"]:
+                # Разрешаем доступ к публичным endpoint
                 return {
                     'user': {'id': 1003215844, 'first_name': 'Test', 'username': 'test'}, 
                     'valid': True,
@@ -323,6 +475,7 @@ async def verify_telegram_auth(
         
         logger.info(f"Успешная аутентификация пользователя: {validated_data.get('user', {}).get('id')}")
         validated_data['demo_mode'] = False
+        validated_data['auth_method'] = 'mini_app'
         return validated_data
         
     except HTTPException:
@@ -347,8 +500,8 @@ async def health_check():
         
         return {
             "status": "healthy", 
-            "service": "CS2 Bot API v2.0.1",
-            "version": "2.0.1",
+            "service": "CS2 Bot API v2.0.2",
+            "version": "2.0.2",
             "timestamp": time.time(),
             "database": "SQLite",
             "users_count": user_count,
@@ -416,6 +569,7 @@ async def get_user_data(auth_data: Dict[str, Any] = Depends(verify_telegram_auth
     try:
         user_info = auth_data['user']
         demo_mode = auth_data.get('demo_mode', False)
+        auth_method = auth_data.get('auth_method', 'unknown')
         user_id = user_info.get('id')
         
         if not user_id:
@@ -459,7 +613,8 @@ async def get_user_data(auth_data: Dict[str, Any] = Depends(verify_telegram_auth
                 "referral_code": user['referral_code'],
                 "trade_link": user['trade_link'],
                 "created_at": user['created_at'],
-                "is_subscribed": bool(user['is_subscribed'])
+                "is_subscribed": bool(user['is_subscribed']),
+                "auth_method": auth_method
             },
             "stats": {
                 "total_earned": stats.get('total_earned', 0),
@@ -503,7 +658,8 @@ async def get_demo_user_data(user_info: Dict[str, Any]) -> Dict[str, Any]:
             "referral_code": f"ref_{user_info.get('id', 1003215844)}",
             "trade_link": "https://steamcommunity.com/tradeoffer/new/?partner=123456789&token=abc123",
             "created_at": time.time() - 86400,
-            "is_subscribed": True
+            "is_subscribed": True,
+            "auth_method": "demo"
         },
         "stats": {
             "total_earned": 2000,
@@ -1477,7 +1633,7 @@ async def test_endpoint():
         
         return {
             "success": True,
-            "message": "API v2.0.1 работает корректно",
+            "message": "API v2.0.2 работает корректно",
             "timestamp": time.time(),
             "database": "SQLite",
             "stats": stats,
@@ -1496,7 +1652,9 @@ async def test_endpoint():
                 "/api/earn/referral-info",
                 "/api/version",
                 "/api/check-update",
-                "/api/can-use-referral"
+                "/api/can-use-referral",
+                "/api/auth/telegram",
+                "/api/auth/logout"
             ]
         }
     except Exception as e:
@@ -1641,11 +1799,12 @@ async def preflight_handler(request: Request, rest_of_path: str):
 @app.on_event("startup")
 async def startup_event():
     """Инициализация при запуске сервера"""
-    logger.info("🚀 Запуск CS2 Bot API сервера v2.0.1...")
+    logger.info("🚀 Запуск CS2 Bot API сервера v2.0.2...")
     logger.info("📊 База данных: SQLite")
     logger.info(f"🤖 Токен бота: {TOKEN[:8]}...{TOKEN[-4:] if len(TOKEN) > 12 else ''}")
     logger.info(f"🔧 Режим отладки: {os.environ.get('DEBUG_MODE', 'True')}")
     logger.info("🔄 Автоматическое обновление кеша: ВКЛЮЧЕНО")
+    logger.info("🔐 OAuth авторизация: ДОСТУПНА")
 
 # Точка входа для WSGI
 if __name__ == "__main__":
