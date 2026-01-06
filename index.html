@@ -16,6 +16,7 @@
                    font-src 'self' https://cdnjs.cloudflare.com;
                    media-src 'self';
                    object-src 'none';
+                   frame-src https://oauth.telegram.org https://*.telegram.org;
                    base-uri 'self';
                    form-action 'self';">
     
@@ -34,38 +35,29 @@
     <meta name="theme-color" content="#667eea">
 </head>
 <body>
-    <!-- Веб-авторизация через Telegram Widget -->
-    <div id="web-auth-overlay" style="display: flex; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #1a1a2e; z-index: 10000; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center;">
-        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px; border-radius: 15px; border: 2px solid #667eea; max-width: 450px; width: 90%; box-shadow: 0 15px 35px rgba(102, 126, 234, 0.3);">
-            <i class="fab fa-telegram" style="font-size: 70px; color: white; margin-bottom: 25px; text-shadow: 0 2px 10px rgba(0,0,0,0.2);"></i>
-            <h2 style="color: white; margin-bottom: 15px; font-weight: 600; font-size: 24px;">Вход в Rancase Bot</h2>
-            <p style="color: rgba(255,255,255,0.9); margin-bottom: 30px; line-height: 1.5; font-size: 16px;">
-                Войдите через Telegram, чтобы использовать все возможности
+    <!-- Веб-авторизация через Telegram OAuth (только для браузера) -->
+    <div id="web-auth-overlay" class="auth-overlay">
+        <div class="auth-container">
+            <i class="fab fa-telegram auth-icon"></i>
+            <h2 class="auth-title">Вход в Rancase Bot</h2>
+            <p class="auth-subtitle">
+                Вы зашли через браузер. Войдите в аккаунт Telegram, чтобы синхронизировать баланс и скины с мини-приложением.
             </p>
             
-            <!-- Telegram Login Widget -->
-            <script async 
-                    src="https://telegram.org/js/telegram-widget.js?22" 
-                    data-telegram-login="rancasebot"
-                    data-size="large"
-                    data-radius="15"
-                    data-userpic="true"
-                    data-request-access="write"
-                    data-auth-url="/api/auth/telegram-callback"
-                    data-on-auth="onTelegramAuth(user)"
-                    data-telegram-redirect-uri="/">
-            </script>
+            <div class="auth-buttons">
+                <a href="/api/auth/telegram" class="telegram-auth-btn">
+                    <i class="fab fa-telegram"></i> Войти через Telegram
+                </a>
+                
+                <a href="https://t.me/rancasebot" target="_blank" class="open-bot-btn">
+                    <i class="fab fa-telegram"></i> Открыть в Telegram
+                </a>
+            </div>
             
-            <p style="color: rgba(255,255,255,0.8); font-size: 14px; margin-top: 20px;">
-                После входа ваши данные будут синхронизированы с мини-приложением
-            </p>
-            
-            <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.2);">
-                <p style="color: rgba(255,255,255,0.8); font-size: 14px;">
+            <div class="auth-footer">
+                <p>
                     <i class="fas fa-info-circle"></i> У вас нет аккаунта?
-                    <a href="https://t.me/rancasebot" target="_blank" style="color: white; text-decoration: underline;">
-                        Создайте его в боте
-                    </a>
+                    <a href="https://t.me/rancasebot" target="_blank">Создайте его в боте</a>
                 </p>
             </div>
         </div>
@@ -740,11 +732,6 @@
                     </a>
                     
                     <div class="menu-divider"></div>
-                    
-                    <a class="menu-item logout" id="web-logout-btn">
-                        <i class="fas fa-sign-out-alt"></i>
-                        <span>Выйти из аккаунта</span>
-                    </a>
                     
                     <a class="menu-item logout" id="logout-btn">
                         <i class="fas fa-sign-out-alt"></i>
