@@ -11,7 +11,7 @@ let appState = {
 };
 
 const API_BASE_URL = "https://cs2-mini-app.onrender.com";
-const APP_VERSION = "2.0.1";
+const APP_VERSION = "2.0.2";
 
 // Улучшенная система заработка
 let enhancedEarnState = {
@@ -33,7 +33,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Проверка обновлений
     checkForUpdates();
     
-    // Проверяем среду запуска
+    // Сначала проверяем авторизацию
     checkEnvironment();
     
     setupEventListeners();
@@ -55,153 +55,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // Запуск периодической проверки обновлений
     startUpdateChecker();
 });
-
-// ===== ПРОВЕРКА СРЕДЫ ЗАПУСКА =====
-function checkEnvironment() {
-    const overlay = document.getElementById('web-auth-overlay');
-    
-    try {
-        // Проверяем, доступен ли Telegram Web App SDK
-        if (typeof window.Telegram === 'undefined' || !window.Telegram.WebApp) {
-            console.error("❌ Telegram SDK не загружен, показываем веб-авторизацию");
-            showWebAuth();
-            return;
-        }
-        
-        tg = window.Telegram.WebApp;
-        tg.ready();
-        tg.expand();
-        
-        // Если initData отсутствует или слишком короткий, значит это обычный браузер
-        if (!tg.initData || tg.initData.length < 50) {
-            console.log("🌐 Вход через браузер: показываем кнопку авторизации");
-            showWebAuth();
-        } else {
-            console.log("📱 Вход через Mini App: авторизация автоматическая");
-            overlay.style.display = 'none';
-            initializeTelegramApp();
-        }
-        
-    } catch (error) {
-        console.error("❌ Ошибка проверки среды:", error);
-        showWebAuth();
-    }
-}
-
-function showWebAuth() {
-    const overlay = document.getElementById('web-auth-overlay');
-    if (overlay) {
-        overlay.style.display = 'flex';
-        loadTelegramWidget();
-    }
-}
-
-function loadTelegramWidget() {
-    const container = document.getElementById('telegram-login-button');
-    if (!container) return;
-    
-    const script = document.createElement('script');
-    
-    script.src = "https://telegram.org/js/telegram-widget.js?22";
-    script.setAttribute('data-telegram-login', "rancasebot");
-    script.setAttribute('data-size', 'large');
-    script.setAttribute('data-radius', '15');
-    script.setAttribute('data-onauth', 'onTelegramAuth(user)');
-    script.setAttribute('data-request-access', 'write');
-    script.async = true;
-    
-    container.appendChild(script);
-}
-
-// Вызывается автоматически виджетом Telegram
-window.onTelegramAuth = async function(user) {
-    console.log("✅ Авторизация получена через Widget:", user);
-    
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/auth/web`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(user)
-        });
-        
-        const data = await response.json();
-        if (data.success || data.status === 'ok') {
-            document.getElementById('web-auth-overlay').style.display = 'none';
-            
-            // Сохраняем данные пользователя
-            appState.user = {
-                id: user.id,
-                firstName: user.first_name || 'Пользователь',
-                lastName: user.last_name || '',
-                username: user.username || `user_${user.id}`,
-                photo_url: user.photo_url || null
-            };
-            
-            // Сохраняем токен для API запросов
-            localStorage.setItem('telegram_auth_data', JSON.stringify(user));
-            localStorage.setItem('web_auth_hash', user.hash || '');
-            
-            // Показываем приветствие
-            showToast('Успешный вход!', `Добро пожаловать, ${user.first_name}!`, 'success');
-            
-            // Загружаем данные пользователя
-            loadUserData();
-            
-            // Обновляем UI
-            updateUserInfo();
-            updateProfileInfo();
-            
-        } else {
-            showToast('Ошибка', 'Не удалось войти через Telegram', 'error');
-        }
-        
-    } catch (error) {
-        console.error('❌ Ошибка веб-авторизации:', error);
-        showToast('Ошибка', 'Сервер не отвечает', 'error');
-        // Используем тестовые данные как запасной вариант
-        setTimeout(() => {
-            useTestData();
-            document.getElementById('web-auth-overlay').style.display = 'none';
-        }, 1000);
-    }
-};
-
-// ===== TELEGRAM ИНИЦИАЛИЗАЦИЯ =====
-function initializeTelegramApp() {
-    try {
-        if (!tg) {
-            tg = window.Telegram.WebApp;
-            tg.ready();
-            tg.expand();
-        }
-        
-        console.log('📱 Telegram WebApp версия:', tg.version);
-        console.log('📱 Telegram initDataUnsafe:', tg.initDataUnsafe);
-        
-        // Пытаемся получить данные пользователя
-        if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
-            const userData = tg.initDataUnsafe.user;
-            appState.user = {
-                id: userData.id,
-                firstName: userData.first_name || 'Пользователь',
-                lastName: userData.last_name || '',
-                username: userData.username || `user_${userData.id}`
-            };
-            
-            console.log("✅ Пользователь Telegram авторизован:", appState.user);
-            
-            // Загружаем реальные данные с сервера
-            loadUserData();
-        } else {
-            console.warn("⚠️ Данные пользователя Telegram не получены");
-            useTestData();
-        }
-        
-    } catch (error) {
-        console.error('❌ Ошибка инициализации Telegram:', error);
-        useTestData();
-    }
-}
 
 // ===== АВТОМАТИЧЕСКОЕ ОБНОВЛЕНИЕ =====
 function checkForUpdates() {
@@ -227,7 +80,7 @@ function checkForUpdates() {
 
 function clearOldCache() {
     // Очищаем старые данные localStorage (кроме важных)
-    const keepKeys = ['user_preferences', 'app_version', 'last_update', 'telegram_auth_data', 'web_auth_hash'];
+    const keepKeys = ['user_preferences', 'app_version', 'last_update'];
     Object.keys(localStorage).forEach(key => {
         if (!keepKeys.includes(key) && !key.startsWith('telegram_')) {
             localStorage.removeItem(key);
@@ -276,7 +129,7 @@ async function checkServerForUpdates() {
             console.log('✅ Сервер доступен, версия:', data.version);
             
             // Проверяем версию API
-            if (data.version && data.version !== "2.0.1") {
+            if (data.version && data.version !== "2.0.0") {
                 showUpdateNotification('Доступно обновление API', 'Перезагрузите приложение для получения новых функций');
             }
         }
@@ -349,6 +202,120 @@ function registerServiceWorker() {
         });
     }
 }
+
+// ===== АВТОРИЗАЦИЯ =====
+function checkWebAuth() {
+    const cookies = document.cookie.split(';');
+    let userData = null;
+    
+    for (let cookie of cookies) {
+        cookie = cookie.trim();
+        if (cookie.startsWith('user_data=')) {
+            try {
+                const jsonStr = decodeURIComponent(cookie.substring('user_data='.length));
+                userData = JSON.parse(jsonStr);
+                break;
+            } catch (e) {
+                console.error('Error parsing user_data cookie:', e);
+            }
+        }
+    }
+    
+    return userData;
+}
+
+function checkEnvironment() {
+    const overlay = document.getElementById('web-auth-overlay');
+    
+    // Проверяем веб-авторизацию
+    const userData = checkWebAuth();
+    if (userData) {
+        console.log("✅ Веб-авторизация через cookie:", userData);
+        if (overlay) overlay.style.display = 'none';
+        
+        appState.user = {
+            id: userData.id,
+            firstName: userData.first_name,
+            lastName: userData.last_name || '',
+            username: userData.username || `user_${userData.id}`
+        };
+        
+        // Загружаем реальные данные с сервера
+        loadUserData();
+        updateUserInfo();
+        updateInventoryUI();
+        updateProfileInfo();
+        
+        showToast('Добро пожаловать!', `Вы вошли как ${userData.first_name}`, 'success');
+        return;
+    }
+    
+    // Проверяем Mini App
+    try {
+        if (typeof window.Telegram === 'undefined' || !window.Telegram.WebApp) {
+            console.log("🌐 Вход через браузер: показываем OAuth");
+            if (overlay) overlay.style.display = 'flex';
+            return;
+        }
+        
+        tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+        
+        console.log('📱 Telegram WebApp версия:', tg.version);
+        console.log('📱 Telegram initDataUnsafe:', tg.initDataUnsafe);
+        
+        // Пытаемся получить данные пользователя
+        if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
+            const userData = tg.initDataUnsafe.user;
+            appState.user = {
+                id: userData.id,
+                firstName: userData.first_name || 'Пользователь',
+                lastName: userData.last_name || '',
+                username: userData.username || `user_${userData.id}`
+            };
+            
+            console.log("✅ Пользователь Telegram авторизован:", appState.user);
+            
+            if (overlay) overlay.style.display = 'none';
+            
+            // Загружаем реальные данные с сервера
+            loadUserData();
+        } else {
+            console.warn("⚠️ Данные пользователя Telegram не получены");
+            if (overlay) overlay.style.display = 'flex';
+            useTestData();
+        }
+        
+    } catch (error) {
+        console.error('❌ Ошибка инициализации Telegram:', error);
+        if (overlay) overlay.style.display = 'flex';
+        useTestData();
+    }
+}
+
+// Функция для Telegram Widget
+window.onTelegramAuth = function(user) {
+    console.log("✅ Telegram OAuth успешен:", user);
+    
+    // Обновляем состояние
+    appState.user = {
+        id: user.id,
+        firstName: user.first_name || 'Пользователь',
+        lastName: user.last_name || '',
+        username: user.username || `user_${user.id}`
+    };
+    
+    // Скрываем overlay
+    const overlay = document.getElementById('web-auth-overlay');
+    if (overlay) overlay.style.display = 'none';
+    
+    // Загружаем данные пользователя
+    loadUserData();
+    updateUserInfo();
+    
+    showToast('Успешный вход!', `Добро пожаловать, ${user.first_name}!`, 'success');
+};
 
 // ===== ТЕСТОВЫЕ ДАННЫЕ =====
 function useTestData() {
@@ -540,10 +507,24 @@ function setupEventListeners() {
         });
     });
     
-    // Кнопка выхода
+    // Кнопка выхода из веб-аккаунта
+    const webLogoutBtn = document.getElementById('web-logout-btn');
+    if (webLogoutBtn) {
+        webLogoutBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            debounce(logoutWebAccount);
+        });
+    }
+    
+    // Кнопка выхода (закрытие приложения)
     const logoutBtn = document.getElementById('logout-btn');
     if (logoutBtn) {
-        logoutBtn.addEventListener('click', closeApp);
+        logoutBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            debounce(closeApp);
+        });
     }
     
     // Промокод по Enter
@@ -662,30 +643,20 @@ async function apiRequest(endpoint, method = 'GET', data = null) {
             'Cache-Control': 'no-cache'
         };
         
-        // Проверяем, авторизованы ли мы через Mini App
-        if (tg && tg.initData) {
-            headers['Authorization'] = `tma ${tg.initData}`;
-            console.log('🔐 Добавляем Telegram авторизацию Mini App');
-        } 
-        // Проверяем, авторизованы ли мы через Web Widget
-        else if (localStorage.getItem('telegram_auth_data')) {
-            try {
-                const authData = JSON.parse(localStorage.getItem('telegram_auth_data'));
-                headers['X-Telegram-Auth'] = authData.hash || '';
-                headers['X-Telegram-User'] = JSON.stringify({
-                    id: authData.id,
-                    first_name: authData.first_name,
-                    last_name: authData.last_name,
-                    username: authData.username
-                });
-                console.log('🌐 Добавляем Telegram авторизацию Web Widget');
-            } catch (e) {
-                console.log('⚠️ Нет данных веб-авторизации');
+        // Проверяем веб-авторизацию
+        const userData = checkWebAuth();
+        if (userData) {
+            // Если пользователь авторизован через OAuth, проверяем наличие Telegram Mini App данных
+            if (tg && tg.initData) {
+                headers['Authorization'] = `tma ${tg.initData}`;
+                console.log('🔐 Добавляем Telegram Mini App авторизацию');
             }
-        }
-        // Демо-режим для тестирования
-        else {
-            console.log('⚠️ Нет данных аутентификации, используем демо-режим для API');
+        } else if (tg && tg.initData) {
+            // Только Telegram Mini App
+            headers['Authorization'] = `tma ${tg.initData}`;
+            console.log('🔐 Добавляем Telegram Mini App авторизацию');
+        } else {
+            console.log('⚠️ Нет данных авторизации, используем демо-режим');
             return simulateAPIResponse(endpoint, method, data);
         }
         
@@ -693,7 +664,7 @@ async function apiRequest(endpoint, method = 'GET', data = null) {
             method: method,
             headers: headers,
             mode: 'cors',
-            credentials: 'omit'
+            credentials: 'include'  // Важно для cookies
         };
         
         if (data && (method === 'POST' || method === 'PUT')) {
@@ -708,8 +679,13 @@ async function apiRequest(endpoint, method = 'GET', data = null) {
         
         if (!response.ok) {
             if (response.status === 401) {
-                console.warn('🔐 Ошибка авторизации 401, переходим в демо-режим');
-                return simulateAPIResponse(endpoint, method, data);
+                console.warn('🔐 Ошибка авторизации 401');
+                // Попробуем обновить cookies
+                const userData = checkWebAuth();
+                if (!userData) {
+                    console.log('🔄 Токен устарел, переходим в демо-режим');
+                    return simulateAPIResponse(endpoint, method, data);
+                }
             }
             throw new Error(`HTTP ${response.status}`);
         }
@@ -739,7 +715,8 @@ function simulateAPIResponse(endpoint, method, data) {
                     inventory: appState.inventory,
                     referral_code: appState.referralCode,
                     trade_link: appState.tradeLink,
-                    referrals_count: appState.referralsCount
+                    referrals_count: appState.referralsCount,
+                    auth_method: 'demo'
                 },
                 daily_bonus_available: appState.dailyBonusAvailable,
                 telegram_profile_status: {
@@ -758,7 +735,8 @@ function simulateAPIResponse(endpoint, method, data) {
                     from_steam: enhancedEarnState.steamVerified ? 1000 : 0,
                     total_invites: 3,
                     active_invites: 3
-                }
+                },
+                demo_mode: true
             });
             
         case '/api/daily-bonus':
@@ -771,7 +749,8 @@ function simulateAPIResponse(endpoint, method, data) {
                     bonus: bonusAmount,
                     new_balance: appState.balance,
                     next_available: Date.now() + 86400000,
-                    message: `Ежедневный бонус: +${bonusAmount} баллов!`
+                    message: `Ежедневный бонус: +${bonusAmount} баллов!`,
+                    demo_mode: true
                 });
             }
             break;
@@ -811,7 +790,8 @@ function simulateAPIResponse(endpoint, method, data) {
                         item_rarity: newItem.rarity,
                         new_balance: appState.balance,
                         inventory: appState.inventory,
-                        message: `Вы получили: ${newItem.name}`
+                        message: `Вы получили: ${newItem.name}`,
+                        demo_mode: true
                     });
                 } else {
                     return Promise.resolve({
@@ -819,7 +799,8 @@ function simulateAPIResponse(endpoint, method, data) {
                         error: "Недостаточно баллов",
                         required: price,
                         current: appState.balance,
-                        message: "Пополните баланс или выполните задания"
+                        message: "Пополните баланс или выполните задания",
+                        demo_mode: true
                     });
                 }
             }
@@ -844,13 +825,15 @@ function simulateAPIResponse(endpoint, method, data) {
                         new_balance: appState.balance,
                         promo_code: promoCode,
                         description: "Демо промокод",
-                        message: `Промокод активирован! +${promoPoints[promoCode]} баллов`
+                        message: `Промокод активирован! +${promoPoints[promoCode]} баллов`,
+                        demo_mode: true
                     });
                 } else {
                     return Promise.resolve({
                         success: false,
                         error: "Неверный промокод",
-                        message: "Такого промокода не существует"
+                        message: "Такого промокода не существует",
+                        demo_mode: true
                     });
                 }
             }
@@ -863,7 +846,8 @@ function simulateAPIResponse(endpoint, method, data) {
                     success: true,
                     message: "Трейд ссылка сохранена",
                     trade_link: data.trade_link,
-                    validated: true
+                    validated: true,
+                    demo_mode: true
                 });
             }
             break;
@@ -879,7 +863,8 @@ function simulateAPIResponse(endpoint, method, data) {
                     { code: 'MINIAPP', points: 200, description: 'За запуск Mini App', remaining_uses: 180, max_uses: 200, used: 20 }
                 ],
                 total: 5,
-                server_time: Date.now() / 1000
+                server_time: Date.now() / 1000,
+                demo_mode: true
             });
             
         case '/api/can-use-referral':
@@ -910,7 +895,8 @@ function simulateAPIResponse(endpoint, method, data) {
                 next_milestone: { invites: 5, bonus: 1000, badge: "🎖️ Начинающий" },
                 progress_percent: 60,
                 telegram_status: { verified: enhancedEarnState.telegramVerified },
-                steam_status: { verified: enhancedEarnState.steamVerified, level: 10 }
+                steam_status: { verified: enhancedEarnState.steamVerified, level: 10 },
+                demo_mode: true
             });
             
         case '/api/earn/check-telegram':
@@ -929,7 +915,8 @@ function simulateAPIResponse(endpoint, method, data) {
                         reward_received: true,
                         penalty_applied: false,
                         next_check: Date.now() + 604800000,
-                        message: "Telegram профиль проверен"
+                        message: "Telegram профиль проверен",
+                        demo_mode: true
                     });
                 }
                 return Promise.resolve({
@@ -942,7 +929,8 @@ function simulateAPIResponse(endpoint, method, data) {
                     reward_received: false,
                     penalty_applied: false,
                     next_check: Date.now() + 604800000,
-                    message: "Telegram профиль уже проверен"
+                    message: "Telegram профиль уже проверен",
+                    demo_mode: true
                 });
             }
             break;
@@ -965,7 +953,8 @@ function simulateAPIResponse(endpoint, method, data) {
                         rewards_available: 1000,
                         reward_received: true,
                         next_reward_date: Date.now() + 604800000,
-                        message: "Steam профиль проверен"
+                        message: "Steam профиль проверен",
+                        demo_mode: true
                     });
                 }
                 return Promise.resolve({
@@ -980,7 +969,8 @@ function simulateAPIResponse(endpoint, method, data) {
                     rewards_available: 0,
                     reward_received: false,
                     next_reward_date: Date.now() + 604800000,
-                    message: "Steam профиль уже проверен"
+                    message: "Steam профиль уже проверен",
+                    demo_mode: true
                 });
             }
             break;
@@ -1011,7 +1001,8 @@ function simulateAPIResponse(endpoint, method, data) {
                     milestone_reached: milestoneBonus > 0,
                     passive_income_activated: totalInvites >= 10,
                     passive_income_percent: totalInvites >= 50 ? 15 : totalInvites >= 25 ? 10 : totalInvites >= 10 ? 5 : 0,
-                    message: `Друг приглашен! +500 баллов` + (milestoneBonus > 0 ? ` + бонус ${milestoneBonus} баллов за достижение!` : "")
+                    message: `Друг приглашен! +500 баллов` + (milestoneBonus > 0 ? ` + бонус ${milestoneBonus} баллов за достижение!` : ""),
+                    demo_mode: true
                 });
             }
             break;
@@ -1039,7 +1030,8 @@ function simulateAPIResponse(endpoint, method, data) {
                     { invites: 25, bonus: 7500, badge: "🥈 Серебряный агент" },
                     { invites: 50, bonus: 20000, badge: "🥇 Золотой агент" },
                     { invites: 100, bonus: 50000, badge: "👑 Король рефералов" }
-                ]
+                ],
+                demo_mode: true
             });
     }
     
@@ -1056,7 +1048,7 @@ async function loadUserData() {
         
         const response = await apiRequest('/api/user');
         
-        if (response.success && !response.demo_mode) {
+        if (response.success) {
             appState.balance = response.user.balance;
             appState.inventory = response.user.inventory || [];
             appState.dailyBonusAvailable = response.daily_bonus_available;
@@ -1075,9 +1067,9 @@ async function loadUserData() {
             updateInventoryUI();
             updateProfileInfo();
             
-            showToast('Добро пожаловать!', `Баланс: ${appState.balance} баллов`, 'success');
-        } else if (response.demo_mode) {
-            console.log('🎭 Используем демо-данные');
+            if (!response.demo_mode) {
+                showToast('Добро пожаловать!', `Баланс: ${appState.balance} баллов`, 'success');
+            }
         }
         
     } catch (error) {
@@ -2044,6 +2036,49 @@ function closeCaseOpening() {
     }
 }
 
+// ===== ВЫХОД ИЗ СИСТЕМЫ =====
+async function logoutWebAccount() {
+    try {
+        const response = await fetch('/api/auth/logout', {
+            method: 'GET',
+            credentials: 'include'
+        });
+        
+        if (response.ok) {
+            // Удаляем cookies
+            document.cookie = "auth_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+            document.cookie = "user_data=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+            
+            // Обновляем состояние
+            appState.user = null;
+            appState.balance = 0;
+            appState.inventory = [];
+            appState.dailyBonusAvailable = true;
+            appState.referralCode = "";
+            appState.tradeLink = "";
+            appState.referralsCount = 0;
+            
+            // Показываем экран авторизации
+            const overlay = document.getElementById('web-auth-overlay');
+            if (overlay) {
+                overlay.style.display = 'flex';
+            }
+            
+            // Обновляем UI
+            updateUserInfo();
+            updateInventoryUI();
+            
+            showToast('Выход', 'Вы успешно вышли из системы', 'info');
+            
+            // Закрываем меню
+            toggleMenu(false);
+        }
+    } catch (error) {
+        console.error('Ошибка выхода:', error);
+        showToast('Ошибка', 'Не удалось выйти из системы', 'error');
+    }
+}
+
 // ===== УТИЛИТЫ =====
 function showToast(title, message, type = 'info') {
     const container = document.getElementById('toast-container');
@@ -2145,5 +2180,6 @@ window.closeInviteModal = closeInviteModal;
 window.useFriendReferralCode = useFriendReferralCode;
 window.shareViaTelegram = shareViaTelegram;
 window.onTelegramAuth = onTelegramAuth;
+window.logoutWebAccount = logoutWebAccount;
 
 console.log("📦 CS2 Skin Bot скрипт загружен!");
