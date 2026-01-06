@@ -33,15 +33,12 @@ document.addEventListener('DOMContentLoaded', function() {
     // Проверка обновлений
     checkForUpdates();
     
-    initializeTelegramApp();
+    // Проверяем среду запуска
+    checkEnvironment();
+    
     setupEventListeners();
     updateBonusTimer();
     setInterval(updateBonusTimer, 1000);
-    
-    // Сразу обновляем UI для демо
-    updateUserInfo();
-    updateInventoryUI();
-    updateProfileInfo();
     
     // Инициализируем улучшенный заработок
     setTimeout(() => {
@@ -58,6 +55,153 @@ document.addEventListener('DOMContentLoaded', function() {
     // Запуск периодической проверки обновлений
     startUpdateChecker();
 });
+
+// ===== ПРОВЕРКА СРЕДЫ ЗАПУСКА =====
+function checkEnvironment() {
+    const overlay = document.getElementById('web-auth-overlay');
+    
+    try {
+        // Проверяем, доступен ли Telegram Web App SDK
+        if (typeof window.Telegram === 'undefined' || !window.Telegram.WebApp) {
+            console.error("❌ Telegram SDK не загружен, показываем веб-авторизацию");
+            showWebAuth();
+            return;
+        }
+        
+        tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+        
+        // Если initData отсутствует или слишком короткий, значит это обычный браузер
+        if (!tg.initData || tg.initData.length < 50) {
+            console.log("🌐 Вход через браузер: показываем кнопку авторизации");
+            showWebAuth();
+        } else {
+            console.log("📱 Вход через Mini App: авторизация автоматическая");
+            overlay.style.display = 'none';
+            initializeTelegramApp();
+        }
+        
+    } catch (error) {
+        console.error("❌ Ошибка проверки среды:", error);
+        showWebAuth();
+    }
+}
+
+function showWebAuth() {
+    const overlay = document.getElementById('web-auth-overlay');
+    if (overlay) {
+        overlay.style.display = 'flex';
+        loadTelegramWidget();
+    }
+}
+
+function loadTelegramWidget() {
+    const container = document.getElementById('telegram-login-button');
+    if (!container) return;
+    
+    const script = document.createElement('script');
+    
+    script.src = "https://telegram.org/js/telegram-widget.js?22";
+    script.setAttribute('data-telegram-login', "rancasebot");
+    script.setAttribute('data-size', 'large');
+    script.setAttribute('data-radius', '15');
+    script.setAttribute('data-onauth', 'onTelegramAuth(user)');
+    script.setAttribute('data-request-access', 'write');
+    script.async = true;
+    
+    container.appendChild(script);
+}
+
+// Вызывается автоматически виджетом Telegram
+window.onTelegramAuth = async function(user) {
+    console.log("✅ Авторизация получена через Widget:", user);
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/auth/web`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(user)
+        });
+        
+        const data = await response.json();
+        if (data.success || data.status === 'ok') {
+            document.getElementById('web-auth-overlay').style.display = 'none';
+            
+            // Сохраняем данные пользователя
+            appState.user = {
+                id: user.id,
+                firstName: user.first_name || 'Пользователь',
+                lastName: user.last_name || '',
+                username: user.username || `user_${user.id}`,
+                photo_url: user.photo_url || null
+            };
+            
+            // Сохраняем токен для API запросов
+            localStorage.setItem('telegram_auth_data', JSON.stringify(user));
+            localStorage.setItem('web_auth_hash', user.hash || '');
+            
+            // Показываем приветствие
+            showToast('Успешный вход!', `Добро пожаловать, ${user.first_name}!`, 'success');
+            
+            // Загружаем данные пользователя
+            loadUserData();
+            
+            // Обновляем UI
+            updateUserInfo();
+            updateProfileInfo();
+            
+        } else {
+            showToast('Ошибка', 'Не удалось войти через Telegram', 'error');
+        }
+        
+    } catch (error) {
+        console.error('❌ Ошибка веб-авторизации:', error);
+        showToast('Ошибка', 'Сервер не отвечает', 'error');
+        // Используем тестовые данные как запасной вариант
+        setTimeout(() => {
+            useTestData();
+            document.getElementById('web-auth-overlay').style.display = 'none';
+        }, 1000);
+    }
+};
+
+// ===== TELEGRAM ИНИЦИАЛИЗАЦИЯ =====
+function initializeTelegramApp() {
+    try {
+        if (!tg) {
+            tg = window.Telegram.WebApp;
+            tg.ready();
+            tg.expand();
+        }
+        
+        console.log('📱 Telegram WebApp версия:', tg.version);
+        console.log('📱 Telegram initDataUnsafe:', tg.initDataUnsafe);
+        
+        // Пытаемся получить данные пользователя
+        if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
+            const userData = tg.initDataUnsafe.user;
+            appState.user = {
+                id: userData.id,
+                firstName: userData.first_name || 'Пользователь',
+                lastName: userData.last_name || '',
+                username: userData.username || `user_${userData.id}`
+            };
+            
+            console.log("✅ Пользователь Telegram авторизован:", appState.user);
+            
+            // Загружаем реальные данные с сервера
+            loadUserData();
+        } else {
+            console.warn("⚠️ Данные пользователя Telegram не получены");
+            useTestData();
+        }
+        
+    } catch (error) {
+        console.error('❌ Ошибка инициализации Telegram:', error);
+        useTestData();
+    }
+}
 
 // ===== АВТОМАТИЧЕСКОЕ ОБНОВЛЕНИЕ =====
 function checkForUpdates() {
@@ -83,7 +227,7 @@ function checkForUpdates() {
 
 function clearOldCache() {
     // Очищаем старые данные localStorage (кроме важных)
-    const keepKeys = ['user_preferences', 'app_version', 'last_update'];
+    const keepKeys = ['user_preferences', 'app_version', 'last_update', 'telegram_auth_data', 'web_auth_hash'];
     Object.keys(localStorage).forEach(key => {
         if (!keepKeys.includes(key) && !key.startsWith('telegram_')) {
             localStorage.removeItem(key);
@@ -132,7 +276,7 @@ async function checkServerForUpdates() {
             console.log('✅ Сервер доступен, версия:', data.version);
             
             // Проверяем версию API
-            if (data.version && data.version !== "2.0.0") {
+            if (data.version && data.version !== "2.0.1") {
                 showUpdateNotification('Доступно обновление API', 'Перезагрузите приложение для получения новых функций');
             }
         }
@@ -203,47 +347,6 @@ function registerServiceWorker() {
                 }
             );
         });
-    }
-}
-
-// ===== TELEGRAM ИНИЦИАЛИЗАЦИЯ =====
-function initializeTelegramApp() {
-    try {
-        if (typeof window.Telegram === 'undefined' || !window.Telegram.WebApp) {
-            console.error("❌ Telegram SDK не загружен");
-            setTimeout(initializeTelegramApp, 100);
-            return;
-        }
-        
-        tg = window.Telegram.WebApp;
-        tg.ready();
-        tg.expand();
-        
-        console.log('📱 Telegram WebApp версия:', tg.version);
-        console.log('📱 Telegram initDataUnsafe:', tg.initDataUnsafe);
-        
-        // Пытаемся получить данные пользователя
-        if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
-            const userData = tg.initDataUnsafe.user;
-            appState.user = {
-                id: userData.id,
-                firstName: userData.first_name || 'Пользователь',
-                lastName: userData.last_name || '',
-                username: userData.username || `user_${userData.id}`
-            };
-            
-            console.log("✅ Пользователь Telegram авторизован:", appState.user);
-            
-            // Загружаем реальные данные с сервера
-            loadUserData();
-        } else {
-            console.warn("⚠️ Данные пользователя Telegram не получены");
-            useTestData();
-        }
-        
-    } catch (error) {
-        console.error('❌ Ошибка инициализации Telegram:', error);
-        useTestData();
     }
 }
 
@@ -559,14 +662,30 @@ async function apiRequest(endpoint, method = 'GET', data = null) {
             'Cache-Control': 'no-cache'
         };
         
+        // Проверяем, авторизованы ли мы через Mini App
         if (tg && tg.initData) {
             headers['Authorization'] = `tma ${tg.initData}`;
-            console.log('🔐 Добавляем Telegram авторизацию');
-        } else if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
-            console.log('⚠️ Нет initData, используем демо-режим для API');
-            return simulateAPIResponse(endpoint, method, data);
-        } else {
-            console.log('⚠️ Нет данных Telegram, используем демо-режим');
+            console.log('🔐 Добавляем Telegram авторизацию Mini App');
+        } 
+        // Проверяем, авторизованы ли мы через Web Widget
+        else if (localStorage.getItem('telegram_auth_data')) {
+            try {
+                const authData = JSON.parse(localStorage.getItem('telegram_auth_data'));
+                headers['X-Telegram-Auth'] = authData.hash || '';
+                headers['X-Telegram-User'] = JSON.stringify({
+                    id: authData.id,
+                    first_name: authData.first_name,
+                    last_name: authData.last_name,
+                    username: authData.username
+                });
+                console.log('🌐 Добавляем Telegram авторизацию Web Widget');
+            } catch (e) {
+                console.log('⚠️ Нет данных веб-авторизации');
+            }
+        }
+        // Демо-режим для тестирования
+        else {
+            console.log('⚠️ Нет данных аутентификации, используем демо-режим для API');
             return simulateAPIResponse(endpoint, method, data);
         }
         
@@ -2025,5 +2144,6 @@ window.showReferralCodeForm = showReferralCodeForm;
 window.closeInviteModal = closeInviteModal;
 window.useFriendReferralCode = useFriendReferralCode;
 window.shareViaTelegram = shareViaTelegram;
+window.onTelegramAuth = onTelegramAuth;
 
 console.log("📦 CS2 Skin Bot скрипт загружен!");
