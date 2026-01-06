@@ -11,7 +11,7 @@ let appState = {
 };
 
 const API_BASE_URL = "https://cs2-mini-app.onrender.com";
-const APP_VERSION = "2.0.2";
+const APP_VERSION = "2.0.1";
 
 // Улучшенная система заработка
 let enhancedEarnState = {
@@ -33,7 +33,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Проверка обновлений
     checkForUpdates();
     
-    // Сначала проверяем авторизацию
+    // Проверяем среду запуска
     checkEnvironment();
     
     setupEventListeners();
@@ -55,153 +55,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // Запуск периодической проверки обновлений
     startUpdateChecker();
 });
-
-// ===== АВТОМАТИЧЕСКОЕ ОБНОВЛЕНИЕ =====
-function checkForUpdates() {
-    const lastVersion = localStorage.getItem('app_version');
-    const lastUpdate = localStorage.getItem('last_update');
-    const now = Date.now();
-    
-    // Если прошло больше 24 часов с последнего обновления
-    if (!lastUpdate || (now - parseInt(lastUpdate)) > 24 * 60 * 60 * 1000) {
-        console.log('🔄 Проверка обновлений...');
-        
-        // Очистка устаревшего кеша
-        clearOldCache();
-        
-        // Обновляем версию
-        localStorage.setItem('app_version', APP_VERSION);
-        localStorage.setItem('last_update', now.toString());
-        
-        // Уведомляем о новом запуске
-        console.log(`✅ Приложение v${APP_VERSION} запущено`);
-    }
-}
-
-function clearOldCache() {
-    // Очищаем старые данные localStorage (кроме важных)
-    const keepKeys = ['user_preferences', 'app_version', 'last_update'];
-    Object.keys(localStorage).forEach(key => {
-        if (!keepKeys.includes(key) && !key.startsWith('telegram_')) {
-            localStorage.removeItem(key);
-        }
-    });
-    
-    // Очищаем sessionStorage
-    sessionStorage.clear();
-    
-    // Запрашиваем обновление Service Worker
-    updateServiceWorker();
-}
-
-function updateServiceWorker() {
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(registrations => {
-            registrations.forEach(registration => {
-                registration.update();
-            });
-        });
-    }
-}
-
-function startUpdateChecker() {
-    // Проверяем обновления каждые 30 минут
-    setInterval(() => {
-        checkServerForUpdates();
-    }, 30 * 60 * 1000);
-    
-    // Проверяем при возвращении на вкладку
-    document.addEventListener('visibilitychange', () => {
-        if (!document.hidden) {
-            quickUpdateCheck();
-        }
-    });
-}
-
-async function checkServerForUpdates() {
-    try {
-        const response = await fetch('/api/health', {
-            headers: { 'Cache-Control': 'no-cache' }
-        });
-        
-        if (response.ok) {
-            const data = await response.json();
-            console.log('✅ Сервер доступен, версия:', data.version);
-            
-            // Проверяем версию API
-            if (data.version && data.version !== "2.0.0") {
-                showUpdateNotification('Доступно обновление API', 'Перезагрузите приложение для получения новых функций');
-            }
-        }
-    } catch (error) {
-        console.log('Проверка обновлений:', error);
-    }
-}
-
-function quickUpdateCheck() {
-    // Быстрая проверка - просто перезагружаем данные
-    if (appState.user) {
-        loadUserData();
-        loadEarnData();
-    }
-}
-
-function showUpdateNotification(title, message) {
-    // Показываем только если нет других уведомлений
-    if (!document.querySelector('.update-notification')) {
-        const notification = document.createElement('div');
-        notification.className = 'update-notification';
-        notification.innerHTML = `
-            <div class="update-content">
-                <i class="fas fa-sync-alt"></i>
-                <div class="update-text">
-                    <h4>${title}</h4>
-                    <p>${message}</p>
-                </div>
-                <button class="update-btn" onclick="this.closest('.update-notification').remove();">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-        `;
-        
-        document.body.appendChild(notification);
-        
-        // Автоудаление через 10 секунд
-        setTimeout(() => {
-            if (notification.parentNode) {
-                notification.remove();
-            }
-        }, 10000);
-    }
-}
-
-// Регистрация Service Worker
-function registerServiceWorker() {
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', function() {
-            navigator.serviceWorker.register('/service-worker.js?v=' + APP_VERSION).then(
-                function(registration) {
-                    console.log('✅ ServiceWorker зарегистрирован: ', registration.scope);
-                    
-                    // Слушаем сообщения от Service Worker
-                    navigator.serviceWorker.addEventListener('message', event => {
-                        if (event.data.type === 'NEW_VERSION') {
-                            console.log('🔄 Новая версия Service Worker:', event.data.version);
-                            showUpdateNotification('Обновление загружено', 'Приложение будет перезагружено');
-                            setTimeout(() => window.location.reload(), 3000);
-                        }
-                    });
-                    
-                    // Проверяем обновления
-                    registration.update();
-                },
-                function(err) {
-                    console.log('❌ Ошибка регистрации ServiceWorker: ', err);
-                }
-            );
-        });
-    }
-}
 
 // ===== АВТОРИЗАЦИЯ =====
 function checkWebAuth() {
@@ -227,7 +80,42 @@ function checkWebAuth() {
 function checkEnvironment() {
     const overlay = document.getElementById('web-auth-overlay');
     
-    // Проверяем веб-авторизацию
+    // 1. Проверяем, находимся ли мы в Telegram Mini App
+    try {
+        if (typeof window.Telegram !== 'undefined' && window.Telegram.WebApp) {
+            tg = window.Telegram.WebApp;
+            console.log('📱 Telegram Mini App detected');
+            
+            // В Telegram Mini App НЕ показываем оверлей авторизации
+            if (overlay) overlay.style.display = 'none';
+            
+            // Пытаемся получить данные пользователя
+            if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
+                const userData = tg.initDataUnsafe.user;
+                appState.user = {
+                    id: userData.id,
+                    firstName: userData.first_name || 'Пользователь',
+                    lastName: userData.last_name || '',
+                    username: userData.username || `user_${userData.id}`
+                };
+                
+                console.log("✅ Пользователь Telegram авторизован:", appState.user);
+                
+                // Загружаем реальные данные с сервера
+                loadUserData();
+                return;
+            } else {
+                console.warn("⚠️ Данные пользователя Telegram не получены");
+                // В Mini App все равно не показываем оверлей, используем демо
+                useTestData();
+                return;
+            }
+        }
+    } catch (error) {
+        console.error('❌ Ошибка проверки Telegram:', error);
+    }
+    
+    // 2. Если НЕ в Telegram Mini App, проверяем веб-авторизацию
     const userData = checkWebAuth();
     if (userData) {
         console.log("✅ Веб-авторизация через cookie:", userData);
@@ -240,82 +128,17 @@ function checkEnvironment() {
             username: userData.username || `user_${userData.id}`
         };
         
-        // Загружаем реальные данные с сервера
         loadUserData();
-        updateUserInfo();
-        updateInventoryUI();
-        updateProfileInfo();
-        
-        showToast('Добро пожаловать!', `Вы вошли как ${userData.first_name}`, 'success');
         return;
     }
     
-    // Проверяем Mini App
-    try {
-        if (typeof window.Telegram === 'undefined' || !window.Telegram.WebApp) {
-            console.log("🌐 Вход через браузер: показываем OAuth");
-            if (overlay) overlay.style.display = 'flex';
-            return;
-        }
-        
-        tg = window.Telegram.WebApp;
-        tg.ready();
-        tg.expand();
-        
-        console.log('📱 Telegram WebApp версия:', tg.version);
-        console.log('📱 Telegram initDataUnsafe:', tg.initDataUnsafe);
-        
-        // Пытаемся получить данные пользователя
-        if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
-            const userData = tg.initDataUnsafe.user;
-            appState.user = {
-                id: userData.id,
-                firstName: userData.first_name || 'Пользователь',
-                lastName: userData.last_name || '',
-                username: userData.username || `user_${userData.id}`
-            };
-            
-            console.log("✅ Пользователь Telegram авторизован:", appState.user);
-            
-            if (overlay) overlay.style.display = 'none';
-            
-            // Загружаем реальные данные с сервера
-            loadUserData();
-        } else {
-            console.warn("⚠️ Данные пользователя Telegram не получены");
-            if (overlay) overlay.style.display = 'flex';
-            useTestData();
-        }
-        
-    } catch (error) {
-        console.error('❌ Ошибка инициализации Telegram:', error);
-        if (overlay) overlay.style.display = 'flex';
-        useTestData();
-    }
+    // 3. Если не авторизован ни через Mini App, ни через cookies
+    console.log("🌐 Неавторизованный доступ через браузер");
+    if (overlay) overlay.style.display = 'flex';
+    
+    // Не используем тестовые данные - показываем только оверлей
+    // useTestData(); // ЗАКОММЕНТИРОВАТЬ!
 }
-
-// Функция для Telegram Widget
-window.onTelegramAuth = function(user) {
-    console.log("✅ Telegram OAuth успешен:", user);
-    
-    // Обновляем состояние
-    appState.user = {
-        id: user.id,
-        firstName: user.first_name || 'Пользователь',
-        lastName: user.last_name || '',
-        username: user.username || `user_${user.id}`
-    };
-    
-    // Скрываем overlay
-    const overlay = document.getElementById('web-auth-overlay');
-    if (overlay) overlay.style.display = 'none';
-    
-    // Загружаем данные пользователя
-    loadUserData();
-    updateUserInfo();
-    
-    showToast('Успешный вход!', `Добро пожаловать, ${user.first_name}!`, 'success');
-};
 
 // ===== ТЕСТОВЫЕ ДАННЫЕ =====
 function useTestData() {
@@ -507,24 +330,10 @@ function setupEventListeners() {
         });
     });
     
-    // Кнопка выхода из веб-аккаунта
-    const webLogoutBtn = document.getElementById('web-logout-btn');
-    if (webLogoutBtn) {
-        webLogoutBtn.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            debounce(logoutWebAccount);
-        });
-    }
-    
-    // Кнопка выхода (закрытие приложения)
+    // Кнопка выхода
     const logoutBtn = document.getElementById('logout-btn');
     if (logoutBtn) {
-        logoutBtn.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            debounce(closeApp);
-        });
+        logoutBtn.addEventListener('click', closeApp);
     }
     
     // Промокод по Enter
@@ -557,6 +366,22 @@ function setupEventListeners() {
             }
         });
     });
+    
+    // Кнопка для открытия в Telegram (в оверлее)
+    const openBotBtn = document.querySelector('.open-bot-btn');
+    if (openBotBtn) {
+        openBotBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            // Если в Telegram Mini App, просто закрываем оверлей
+            if (tg && tg.close) {
+                tg.close();
+            } else {
+                // В браузере открываем бота в новом окне
+                window.open('https://t.me/rancasebot', '_blank');
+            }
+        });
+    }
     
     console.log("✅ Обработчики событий установлены");
 }
@@ -643,20 +468,25 @@ async function apiRequest(endpoint, method = 'GET', data = null) {
             'Cache-Control': 'no-cache'
         };
         
-        // Проверяем веб-авторизацию
-        const userData = checkWebAuth();
-        if (userData) {
-            // Если пользователь авторизован через OAuth, проверяем наличие Telegram Mini App данных
-            if (tg && tg.initData) {
-                headers['Authorization'] = `tma ${tg.initData}`;
-                console.log('🔐 Добавляем Telegram Mini App авторизацию');
-            }
-        } else if (tg && tg.initData) {
-            // Только Telegram Mini App
+        // Проверяем, авторизованы ли мы через Mini App
+        if (tg && tg.initData) {
             headers['Authorization'] = `tma ${tg.initData}`;
-            console.log('🔐 Добавляем Telegram Mini App авторизацию');
-        } else {
-            console.log('⚠️ Нет данных авторизации, используем демо-режим');
+            console.log('🔐 Добавляем Telegram авторизацию Mini App');
+        } 
+        // Проверяем, авторизованы ли мы через Web Cookie
+        else if (checkWebAuth()) {
+            const userData = checkWebAuth();
+            headers['X-Telegram-User'] = JSON.stringify({
+                id: userData.id,
+                first_name: userData.first_name,
+                last_name: userData.last_name,
+                username: userData.username
+            });
+            console.log('🌐 Добавляем Telegram авторизацию через Cookie');
+        }
+        // Демо-режим для тестирования
+        else {
+            console.log('⚠️ Нет данных аутентификации, используем демо-режим для API');
             return simulateAPIResponse(endpoint, method, data);
         }
         
@@ -664,7 +494,7 @@ async function apiRequest(endpoint, method = 'GET', data = null) {
             method: method,
             headers: headers,
             mode: 'cors',
-            credentials: 'include'  // Важно для cookies
+            credentials: 'omit'
         };
         
         if (data && (method === 'POST' || method === 'PUT')) {
@@ -679,13 +509,8 @@ async function apiRequest(endpoint, method = 'GET', data = null) {
         
         if (!response.ok) {
             if (response.status === 401) {
-                console.warn('🔐 Ошибка авторизации 401');
-                // Попробуем обновить cookies
-                const userData = checkWebAuth();
-                if (!userData) {
-                    console.log('🔄 Токен устарел, переходим в демо-режим');
-                    return simulateAPIResponse(endpoint, method, data);
-                }
+                console.warn('🔐 Ошибка авторизации 401, переходим в демо-режим');
+                return simulateAPIResponse(endpoint, method, data);
             }
             throw new Error(`HTTP ${response.status}`);
         }
@@ -715,8 +540,7 @@ function simulateAPIResponse(endpoint, method, data) {
                     inventory: appState.inventory,
                     referral_code: appState.referralCode,
                     trade_link: appState.tradeLink,
-                    referrals_count: appState.referralsCount,
-                    auth_method: 'demo'
+                    referrals_count: appState.referralsCount
                 },
                 daily_bonus_available: appState.dailyBonusAvailable,
                 telegram_profile_status: {
@@ -735,8 +559,7 @@ function simulateAPIResponse(endpoint, method, data) {
                     from_steam: enhancedEarnState.steamVerified ? 1000 : 0,
                     total_invites: 3,
                     active_invites: 3
-                },
-                demo_mode: true
+                }
             });
             
         case '/api/daily-bonus':
@@ -749,8 +572,7 @@ function simulateAPIResponse(endpoint, method, data) {
                     bonus: bonusAmount,
                     new_balance: appState.balance,
                     next_available: Date.now() + 86400000,
-                    message: `Ежедневный бонус: +${bonusAmount} баллов!`,
-                    demo_mode: true
+                    message: `Ежедневный бонус: +${bonusAmount} баллов!`
                 });
             }
             break;
@@ -790,8 +612,7 @@ function simulateAPIResponse(endpoint, method, data) {
                         item_rarity: newItem.rarity,
                         new_balance: appState.balance,
                         inventory: appState.inventory,
-                        message: `Вы получили: ${newItem.name}`,
-                        demo_mode: true
+                        message: `Вы получили: ${newItem.name}`
                     });
                 } else {
                     return Promise.resolve({
@@ -799,8 +620,7 @@ function simulateAPIResponse(endpoint, method, data) {
                         error: "Недостаточно баллов",
                         required: price,
                         current: appState.balance,
-                        message: "Пополните баланс или выполните задания",
-                        demo_mode: true
+                        message: "Пополните баланс или выполните задания"
                     });
                 }
             }
@@ -825,15 +645,13 @@ function simulateAPIResponse(endpoint, method, data) {
                         new_balance: appState.balance,
                         promo_code: promoCode,
                         description: "Демо промокод",
-                        message: `Промокод активирован! +${promoPoints[promoCode]} баллов`,
-                        demo_mode: true
+                        message: `Промокод активирован! +${promoPoints[promoCode]} баллов`
                     });
                 } else {
                     return Promise.resolve({
                         success: false,
                         error: "Неверный промокод",
-                        message: "Такого промокода не существует",
-                        demo_mode: true
+                        message: "Такого промокода не существует"
                     });
                 }
             }
@@ -846,8 +664,7 @@ function simulateAPIResponse(endpoint, method, data) {
                     success: true,
                     message: "Трейд ссылка сохранена",
                     trade_link: data.trade_link,
-                    validated: true,
-                    demo_mode: true
+                    validated: true
                 });
             }
             break;
@@ -863,8 +680,7 @@ function simulateAPIResponse(endpoint, method, data) {
                     { code: 'MINIAPP', points: 200, description: 'За запуск Mini App', remaining_uses: 180, max_uses: 200, used: 20 }
                 ],
                 total: 5,
-                server_time: Date.now() / 1000,
-                demo_mode: true
+                server_time: Date.now() / 1000
             });
             
         case '/api/can-use-referral':
@@ -895,8 +711,7 @@ function simulateAPIResponse(endpoint, method, data) {
                 next_milestone: { invites: 5, bonus: 1000, badge: "🎖️ Начинающий" },
                 progress_percent: 60,
                 telegram_status: { verified: enhancedEarnState.telegramVerified },
-                steam_status: { verified: enhancedEarnState.steamVerified, level: 10 },
-                demo_mode: true
+                steam_status: { verified: enhancedEarnState.steamVerified, level: 10 }
             });
             
         case '/api/earn/check-telegram':
@@ -915,8 +730,7 @@ function simulateAPIResponse(endpoint, method, data) {
                         reward_received: true,
                         penalty_applied: false,
                         next_check: Date.now() + 604800000,
-                        message: "Telegram профиль проверен",
-                        demo_mode: true
+                        message: "Telegram профиль проверен"
                     });
                 }
                 return Promise.resolve({
@@ -929,8 +743,7 @@ function simulateAPIResponse(endpoint, method, data) {
                     reward_received: false,
                     penalty_applied: false,
                     next_check: Date.now() + 604800000,
-                    message: "Telegram профиль уже проверен",
-                    demo_mode: true
+                    message: "Telegram профиль уже проверен"
                 });
             }
             break;
@@ -953,8 +766,7 @@ function simulateAPIResponse(endpoint, method, data) {
                         rewards_available: 1000,
                         reward_received: true,
                         next_reward_date: Date.now() + 604800000,
-                        message: "Steam профиль проверен",
-                        demo_mode: true
+                        message: "Steam профиль проверен"
                     });
                 }
                 return Promise.resolve({
@@ -969,8 +781,7 @@ function simulateAPIResponse(endpoint, method, data) {
                     rewards_available: 0,
                     reward_received: false,
                     next_reward_date: Date.now() + 604800000,
-                    message: "Steam профиль уже проверен",
-                    demo_mode: true
+                    message: "Steam профиль уже проверен"
                 });
             }
             break;
@@ -1001,8 +812,7 @@ function simulateAPIResponse(endpoint, method, data) {
                     milestone_reached: milestoneBonus > 0,
                     passive_income_activated: totalInvites >= 10,
                     passive_income_percent: totalInvites >= 50 ? 15 : totalInvites >= 25 ? 10 : totalInvites >= 10 ? 5 : 0,
-                    message: `Друг приглашен! +500 баллов` + (milestoneBonus > 0 ? ` + бонус ${milestoneBonus} баллов за достижение!` : ""),
-                    demo_mode: true
+                    message: `Друг приглашен! +500 баллов` + (milestoneBonus > 0 ? ` + бонус ${milestoneBonus} баллов за достижение!` : "")
                 });
             }
             break;
@@ -1030,8 +840,7 @@ function simulateAPIResponse(endpoint, method, data) {
                     { invites: 25, bonus: 7500, badge: "🥈 Серебряный агент" },
                     { invites: 50, bonus: 20000, badge: "🥇 Золотой агент" },
                     { invites: 100, bonus: 50000, badge: "👑 Король рефералов" }
-                ],
-                demo_mode: true
+                ]
             });
     }
     
@@ -1048,7 +857,7 @@ async function loadUserData() {
         
         const response = await apiRequest('/api/user');
         
-        if (response.success) {
+        if (response.success && !response.demo_mode) {
             appState.balance = response.user.balance;
             appState.inventory = response.user.inventory || [];
             appState.dailyBonusAvailable = response.daily_bonus_available;
@@ -1067,9 +876,9 @@ async function loadUserData() {
             updateInventoryUI();
             updateProfileInfo();
             
-            if (!response.demo_mode) {
-                showToast('Добро пожаловать!', `Баланс: ${appState.balance} баллов`, 'success');
-            }
+            showToast('Добро пожаловать!', `Баланс: ${appState.balance} баллов`, 'success');
+        } else if (response.demo_mode) {
+            console.log('🎭 Используем демо-данные');
         }
         
     } catch (error) {
@@ -1095,6 +904,154 @@ async function testAPIConnection() {
     }
 }
 
+// ===== АВТОМАТИЧЕСКОЕ ОБНОВЛЕНИЕ =====
+function checkForUpdates() {
+    const lastVersion = localStorage.getItem('app_version');
+    const lastUpdate = localStorage.getItem('last_update');
+    const now = Date.now();
+    
+    // Если прошло больше 24 часов с последнего обновления
+    if (!lastUpdate || (now - parseInt(lastUpdate)) > 24 * 60 * 60 * 1000) {
+        console.log('🔄 Проверка обновлений...');
+        
+        // Очистка устаревшего кеша
+        clearOldCache();
+        
+        // Обновляем версию
+        localStorage.setItem('app_version', APP_VERSION);
+        localStorage.setItem('last_update', now.toString());
+        
+        // Уведомляем о новом запуске
+        console.log(`✅ Приложение v${APP_VERSION} запущено`);
+    }
+}
+
+function clearOldCache() {
+    // Очищаем старые данные localStorage (кроме важных)
+    const keepKeys = ['user_preferences', 'app_version', 'last_update', 'telegram_auth_data', 'web_auth_hash'];
+    Object.keys(localStorage).forEach(key => {
+        if (!keepKeys.includes(key) && !key.startsWith('telegram_')) {
+            localStorage.removeItem(key);
+        }
+    });
+    
+    // Очищаем sessionStorage
+    sessionStorage.clear();
+    
+    // Запрашиваем обновление Service Worker
+    updateServiceWorker();
+}
+
+function updateServiceWorker() {
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(registrations => {
+            registrations.forEach(registration => {
+                registration.update();
+            });
+        });
+    }
+}
+
+function startUpdateChecker() {
+    // Проверяем обновления каждые 30 минут
+    setInterval(() => {
+        checkServerForUpdates();
+    }, 30 * 60 * 1000);
+    
+    // Проверяем при возвращении на вкладку
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+            quickUpdateCheck();
+        }
+    });
+}
+
+async function checkServerForUpdates() {
+    try {
+        const response = await fetch('/api/health', {
+            headers: { 'Cache-Control': 'no-cache' }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            console.log('✅ Сервер доступен, версия:', data.version);
+            
+            // Проверяем версию API
+            if (data.version && data.version !== "2.0.1") {
+                showUpdateNotification('Доступно обновление API', 'Перезагрузите приложение для получения новых функций');
+            }
+        }
+    } catch (error) {
+        console.log('Проверка обновлений:', error);
+    }
+}
+
+function quickUpdateCheck() {
+    // Быстрая проверка - просто перезагружаем данные
+    if (appState.user) {
+        loadUserData();
+        loadEarnData();
+    }
+}
+
+function showUpdateNotification(title, message) {
+    // Показываем только если нет других уведомлений
+    if (!document.querySelector('.update-notification')) {
+        const notification = document.createElement('div');
+        notification.className = 'update-notification';
+        notification.innerHTML = `
+            <div class="update-content">
+                <i class="fas fa-sync-alt"></i>
+                <div class="update-text">
+                    <h4>${title}</h4>
+                    <p>${message}</p>
+                </div>
+                <button class="update-btn" onclick="this.closest('.update-notification').remove();">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        `;
+        
+        document.body.appendChild(notification);
+        
+        // Автоудаление через 10 секунд
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.remove();
+            }
+        }, 10000);
+    }
+}
+
+// Регистрация Service Worker
+function registerServiceWorker() {
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+            navigator.serviceWorker.register('/service-worker.js?v=' + APP_VERSION).then(
+                function(registration) {
+                    console.log('✅ ServiceWorker зарегистрирован: ', registration.scope);
+                    
+                    // Слушаем сообщения от Service Worker
+                    navigator.serviceWorker.addEventListener('message', event => {
+                        if (event.data.type === 'NEW_VERSION') {
+                            console.log('🔄 Новая версия Service Worker:', event.data.version);
+                            showUpdateNotification('Обновление загружено', 'Приложение будет перезагружено');
+                            setTimeout(() => window.location.reload(), 3000);
+                        }
+                    });
+                    
+                    // Проверяем обновления
+                    registration.update();
+                },
+                function(err) {
+                    console.log('❌ Ошибка регистрации ServiceWorker: ', err);
+                }
+            );
+        });
+    }
+}
+
+// ===== ОСНОВНЫЕ ФУНКЦИИ =====
 async function openCase(price) {
     try {
         showCaseOpening();
@@ -2036,49 +1993,6 @@ function closeCaseOpening() {
     }
 }
 
-// ===== ВЫХОД ИЗ СИСТЕМЫ =====
-async function logoutWebAccount() {
-    try {
-        const response = await fetch('/api/auth/logout', {
-            method: 'GET',
-            credentials: 'include'
-        });
-        
-        if (response.ok) {
-            // Удаляем cookies
-            document.cookie = "auth_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-            document.cookie = "user_data=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-            
-            // Обновляем состояние
-            appState.user = null;
-            appState.balance = 0;
-            appState.inventory = [];
-            appState.dailyBonusAvailable = true;
-            appState.referralCode = "";
-            appState.tradeLink = "";
-            appState.referralsCount = 0;
-            
-            // Показываем экран авторизации
-            const overlay = document.getElementById('web-auth-overlay');
-            if (overlay) {
-                overlay.style.display = 'flex';
-            }
-            
-            // Обновляем UI
-            updateUserInfo();
-            updateInventoryUI();
-            
-            showToast('Выход', 'Вы успешно вышли из системы', 'info');
-            
-            // Закрываем меню
-            toggleMenu(false);
-        }
-    } catch (error) {
-        console.error('Ошибка выхода:', error);
-        showToast('Ошибка', 'Не удалось выйти из системы', 'error');
-    }
-}
-
 // ===== УТИЛИТЫ =====
 function showToast(title, message, type = 'info') {
     const container = document.getElementById('toast-container');
@@ -2179,7 +2093,5 @@ window.showReferralCodeForm = showReferralCodeForm;
 window.closeInviteModal = closeInviteModal;
 window.useFriendReferralCode = useFriendReferralCode;
 window.shareViaTelegram = shareViaTelegram;
-window.onTelegramAuth = onTelegramAuth;
-window.logoutWebAccount = logoutWebAccount;
 
 console.log("📦 CS2 Skin Bot скрипт загружен!");
